@@ -128,12 +128,13 @@ CI runs the same lint and test checks on pull requests and pushes.
 
 The package is TypeScript source, but Homebridge runs compiled JavaScript from `dist`. Published npm packages include `dist`. Git branch installs use the npm `prepare` script to build `dist` after npm clones the branch.
 
-For the standard Homebridge Raspberry Pi image, plugins live under `/var/lib/homebridge` and the bundled Node runtime lives under `/opt/homebridge`:
+For the standard Homebridge Raspberry Pi image, load the Homebridge runtime environment before installing. That puts the bundled `node` and `npm` on `PATH`:
 
 ```sh
-sudo -u homebridge /opt/homebridge/bin/node /opt/homebridge/lib/node_modules/npm/bin/npm-cli.js install \
-  --prefix /var/lib/homebridge \
-  github:osdouglas/homebridge-daikin-one-openapi#codex/create-pykinone-homebridge-plugin
+sudo -u homebridge env HOME=/home/homebridge sh -lc '
+  . /opt/homebridge/source.sh
+  npm install --prefix /var/lib/homebridge github:osdouglas/homebridge-daikin-one-openapi#codex/create-pykinone-homebridge-plugin
+'
 
 sudo hb-service restart
 ```

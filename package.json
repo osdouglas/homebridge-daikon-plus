@@ -34,11 +34,11 @@
     "hvac"
   ],
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "rimraf ./dist && tsc",
     "lint": "tsc --noEmit",
     "test": "rimraf ./dist && tsc && node --test test/*.test.mjs",
     "watch": "tsc --watch",
-    "prepare": "\"${npm_node_execpath:-node}\" scripts/build.mjs",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run lint && npm run build"
   },
   "dependencies": {},

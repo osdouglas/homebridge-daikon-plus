@@ -33,9 +33,9 @@ SOLID matters here as a constraint on drift, not as ceremony. The goal is code t
 
 The source is TypeScript because Homebridge and HAP expose useful types for platform plugins, services, characteristics, and config objects. Those types catch adapter mistakes while keeping the runtime simple.
 
-Homebridge runs compiled JavaScript from `dist`. Published npm packages include `dist`; the repository does not commit it. Git branch installs are supported by the npm `prepare` script, which builds `dist` after npm clones the branch.
+Homebridge runs compiled JavaScript from `dist`. Published npm packages include `dist`; the repository does not commit it. Git branch installs are supported by the npm `prepare` script, which runs the normal build after npm clones the branch.
 
-The `prepare` script calls `scripts/build.mjs` through `npm_node_execpath`. Do not make `prepare` call `npm run build` or plain `node`; some Homebridge installations invoke npm through an explicit Node path and do not put `npm` or `node` on the lifecycle script `PATH`.
+For local testing on the official Homebridge Raspberry Pi image, install from inside the Homebridge environment so `/opt/homebridge/bin` is on `PATH`. Do not add package-level workarounds for a shell that has not loaded Homebridge's runtime environment.
 
 Do not add a TypeScript runtime or loader to Homebridge. Build before runtime instead.
 
