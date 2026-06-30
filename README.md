@@ -18,6 +18,8 @@ Design rules:
 - Treat unknown or missing Open API fields as data, not as reasons to crash.
 - Add tests at the adapter boundary: API payloads in, HomeKit values and Daikin write payloads out.
 
+See [DESIGN.md](DESIGN.md) for the code boundaries and non-goals.
+
 ## Target Setup
 
 The first target system is a Daikin FIT communicating HVAC system with a DH6V communicating air handler, Daikin One+ Smart Thermostat, and dual-zone configuration managed through the SkyportHome / Daikin One cloud platform.
