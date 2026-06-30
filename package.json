@@ -38,7 +38,7 @@
     "lint": "tsc --noEmit",
     "test": "rimraf ./dist && tsc && node --test test/*.test.mjs",
     "watch": "tsc --watch",
-    "prepare": "node scripts/build.mjs",
+    "prepare": "\"${npm_node_execpath:-node}\" scripts/build.mjs",
     "prepublishOnly": "npm run lint && npm run build"
   },
   "dependencies": {},
