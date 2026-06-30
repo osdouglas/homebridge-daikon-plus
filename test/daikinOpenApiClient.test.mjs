@@ -170,7 +170,7 @@ test('refreshes expired access tokens before writes', async () => {
 
 function config(overrides = {}) {
   return {
-    name: 'Daikin One',
+    name: 'Daikon Plus',
     apiKey: 'api-key',
     integratorEmail: 'test@example.com',
     integratorToken: 'integrator-token',

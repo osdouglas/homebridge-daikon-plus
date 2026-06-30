@@ -1,24 +1,25 @@
 {
-  "displayName": "Homebridge Daikin One Open API",
-  "name": "homebridge-daikin-one-openapi",
+  "displayName": "Homebridge Daikon Plus",
+  "name": "homebridge-daikon-plus",
   "version": "0.1.0",
   "description": "Homebridge platform for Daikin One+ thermostats using Daikin One Open API integration tokens.",
   "author": "osdouglas",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/osdouglas/homebridge-daikin-one-openapi#readme",
+  "homepage": "https://github.com/osdouglas/homebridge-daikon-plus#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/osdouglas/homebridge-daikin-one-openapi.git"
+    "url": "git+https://github.com/osdouglas/homebridge-daikon-plus.git"
   },
   "bugs": {
-    "url": "https://github.com/osdouglas/homebridge-daikin-one-openapi/issues"
+    "url": "https://github.com/osdouglas/homebridge-daikon-plus/issues"
   },
   "main": "dist/index.js",
   "files": [
     "dist",
     "config.schema.json",
     "README.md",
+    "DEVELOPMENT.md",
     "DESIGN.md"
   ],
   "engines": {
@@ -27,6 +28,7 @@
   },
   "keywords": [
     "homebridge-plugin",
+    "daikon-plus",
     "daikin",
     "daikin-one",
     "oneplus",

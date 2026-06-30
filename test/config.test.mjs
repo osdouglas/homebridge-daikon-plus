@@ -5,7 +5,7 @@ import { parsePlatformConfig } from '../dist/config.js';
 
 test('reports missing required configuration without throwing', () => {
   const result = parsePlatformConfig({
-    platform: 'DaikinOneOpenAPI',
+    platform: 'DaikonPlus',
   });
 
   assert.equal(result.ok, false);
@@ -14,7 +14,7 @@ test('reports missing required configuration without throwing', () => {
 
 test('parses Homebridge config with defaults and filtered device IDs', () => {
   const result = parsePlatformConfig({
-    platform: 'DaikinOneOpenAPI',
+    platform: 'DaikonPlus',
     apiKey: 'api-key',
     integratorEmail: 'owner@example.com',
     integratorToken: 'token',
@@ -27,7 +27,7 @@ test('parses Homebridge config with defaults and filtered device IDs', () => {
 
   assert.equal(result.ok, true);
   assert.deepEqual(result.config, {
-    name: 'Daikin One',
+    name: 'Daikon Plus',
     apiKey: 'api-key',
     integratorEmail: 'owner@example.com',
     integratorToken: 'token',
