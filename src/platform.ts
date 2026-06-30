@@ -62,7 +62,7 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
     if (this.config?.includeDeviceName) {
       return suffix ? `${device.name} ${suffix}` : device.name;
     }
-    return suffix || this.config?.name || 'Daikin One';
+    return suffix || this.config?.name || 'Daikon Plus';
   }
 
   private async discover(): Promise<void> {

@@ -1,2 +1,2 @@
-export const PLUGIN_NAME = 'homebridge-daikin-one-openapi';
-export const PLATFORM_NAME = 'DaikinOneOpenAPI';
+export const PLUGIN_NAME = 'homebridge-daikon-plus';
+export const PLATFORM_NAME = 'DaikonPlus';

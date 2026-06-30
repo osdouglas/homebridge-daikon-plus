@@ -1,6 +1,6 @@
 # Design
 
-This plugin is a thin adapter between the Daikin One Open API and Homebridge/HomeKit.
+Daikon Plus is a thin adapter between the Daikin One Open API and Homebridge/HomeKit.
 
 The code should only need to change when one of those contracts changes: Homebridge, HomeKit, or the Daikin Open API. Device counts, optional fields, zoned versus non-zoned setups, temporarily missing data, and ordinary cloud behavior should be handled by configuration, tolerant parsing, tests, or logging.
 

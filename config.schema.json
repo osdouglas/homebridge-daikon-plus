@@ -1,5 +1,5 @@
 {
-  "pluginAlias": "DaikinOneOpenAPI",
+  "pluginAlias": "DaikonPlus",
   "pluginType": "platform",
   "singular": true,
   "schema": {
@@ -8,7 +8,7 @@
       "name": {
         "title": "Name",
         "type": "string",
-        "default": "Daikin One"
+        "default": "Daikon Plus"
       },
       "apiKey": {
         "title": "API Key",

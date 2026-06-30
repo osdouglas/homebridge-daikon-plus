@@ -1,6 +1,8 @@
-# homebridge-daikin-one-openapi
+# 🫜 Homebridge Daikon Plus
 
 Homebridge platform plugin for Daikin One+ thermostats using the Daikin One Open API integration-token flow.
+
+Daikon Plus is a small Homebridge bridge for Daikin One+. The radish name is deliberate: Daikin One+ -> Daikone Plus -> Daikon Plus. Cute on the outside, boring adapter on the inside.
 
 The plugin authenticates with `apiKey`, `integratorEmail`, and `integratorToken` against `https://integrator-api.daikinskyport.com`.
 
@@ -62,8 +64,8 @@ Requests send `x-api-key`; all requests except `POST /v1/token` also send `Autho
 
 ```json
 {
-  "platform": "DaikinOneOpenAPI",
-  "name": "Daikin One",
+  "platform": "DaikonPlus",
+  "name": "Daikon Plus",
   "apiKey": "your-daikin-open-api-key",
   "integratorEmail": "email-used-in-the-daikin-one-app@example.com",
   "integratorToken": "your-integrator-token",
@@ -107,8 +109,8 @@ A local test `config.json` should live outside the repo, for example in `~/.home
   },
   "platforms": [
     {
-      "platform": "DaikinOneOpenAPI",
-      "name": "Daikin One",
+      "platform": "DaikonPlus",
+      "name": "Daikon Plus",
       "apiKey": "your-daikin-open-api-key",
       "integratorEmail": "email-used-in-the-daikin-one-app@example.com",
       "integratorToken": "your-integrator-token",
@@ -163,7 +165,7 @@ For the standard Homebridge Raspberry Pi image, load the Homebridge runtime envi
 ```sh
 sudo -u homebridge env HOME=/home/homebridge sh -lc '
   . /opt/homebridge/source.sh
-  npm install --prefix /var/lib/homebridge github:osdouglas/homebridge-daikin-one-openapi#codex/create-pykinone-homebridge-plugin
+  npm install --prefix /var/lib/homebridge github:osdouglas/homebridge-daikin-one-openapi#codex/branding
 '
 
 sudo hb-service restart
