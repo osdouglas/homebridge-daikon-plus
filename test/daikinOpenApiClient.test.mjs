@@ -130,6 +130,44 @@ test('readonly mode skips writes without calling the Open API', async () => {
   assert.equal(calls.length, 3);
 });
 
+test('refreshes expired access tokens before writes', async () => {
+  const { calls, installFetch } = fetchQueue([
+    jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
+    jsonResponse([
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ]),
+    jsonResponse({
+      equipmentStatus: 5,
+      mode: 1,
+      heatSetpoint: 20,
+      coolSetpoint: 24,
+      tempIndoor: 21,
+    }),
+    jsonResponse({ accessToken: 'token-2', accessTokenExpiresIn: 3600 }),
+    emptyResponse(),
+  ]);
+  installFetch();
+
+  const client = new DaikinOpenApiClient(config(), log());
+
+  await client.initialize();
+  client.tokenExpiresAtMs = 0;
+  const didWrite = await client.setTargetTemperature('zone-1', 21);
+
+  assert.equal(didWrite, true);
+  assert.deepEqual(
+    calls.filter(call => call.url === tokenUrl).map(call => JSON.parse(call.init.body)),
+    [
+      { email: 'test@example.com', integratorToken: 'integrator-token' },
+      { email: 'test@example.com', integratorToken: 'integrator-token' },
+    ],
+  );
+  assert.equal(calls.at(-1).init.headers.Authorization, 'Bearer token-2');
+});
+
 function config(overrides = {}) {
   return {
     name: 'Daikin One',

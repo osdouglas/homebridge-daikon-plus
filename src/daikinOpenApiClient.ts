@@ -2,6 +2,9 @@ import { hrtime } from 'node:process';
 
 import type { Logging } from 'homebridge';
 
+import { normalizeMode, normalizeThermostatData } from './daikinOpenApiMapper.js';
+import { FetchJsonHttpClient, type JsonHttpClient } from './httpClient.js';
+import { applySetpointPolicy } from './setpointPolicy.js';
 import { EquipmentStatus, ThermostatMode } from './types.js';
 import type {
   DaikinDevice,
@@ -22,7 +25,6 @@ const DAIKIN_ONE_BASE_URI = 'https://integrator-api.daikinskyport.com';
 const TOKEN_URL = `${DAIKIN_ONE_BASE_URI}/v1/token`;
 const DEVICES_URL = `${DAIKIN_ONE_BASE_URI}/v1/devices`;
 const WRITE_DELAY_MS = 15_000;
-const DEFAULT_REQUEST_TIMEOUT_SECONDS = 20;
 
 export class DaikinOpenApiClient {
   private token?: DaikinTokenResponse;
@@ -32,15 +34,14 @@ export class DaikinOpenApiClient {
   private refreshTimer?: NodeJS.Timeout;
   private initialized = false;
   private readonly pollIntervalMs: number;
-  private readonly requestTimeoutMs: number;
   private noPollBeforeMs = 0;
 
   public constructor(
     private readonly config: DaikinPlatformConfig,
     private readonly log: Logging,
+    private readonly http: JsonHttpClient = new FetchJsonHttpClient(config.requestTimeoutSeconds),
   ) {
     this.pollIntervalMs = Math.max(180, config.pollIntervalSeconds) * 1000;
-    this.requestTimeoutMs = Math.max(1, config.requestTimeoutSeconds || DEFAULT_REQUEST_TIMEOUT_SECONDS) * 1000;
   }
 
   public isInitialized(): boolean {
@@ -132,7 +133,7 @@ export class DaikinOpenApiClient {
       return false;
     }
 
-    return this.putMsp(deviceId, this.withSetpointDelta(data, {
+    return this.putMsp(deviceId, applySetpointPolicy(data, {
       mode: this.normalizeMode(mode),
       heatSetpoint: data.heatSetpoint,
       coolSetpoint: data.coolSetpoint,
@@ -156,7 +157,7 @@ export class DaikinOpenApiClient {
         ? { mode: data.mode, heatSetpoint: data.heatSetpoint, coolSetpoint: temperature }
         : { mode: data.mode, heatSetpoint: temperature, coolSetpoint: data.coolSetpoint };
 
-    return this.putMsp(deviceId, this.withSetpointDelta(data, update));
+    return this.putMsp(deviceId, applySetpointPolicy(data, update));
   }
 
   public async setThresholds(deviceId: string, heatSetpoint?: number, coolSetpoint?: number): Promise<boolean> {
@@ -166,7 +167,7 @@ export class DaikinOpenApiClient {
       return false;
     }
 
-    return this.putMsp(deviceId, this.withSetpointDelta(data, {
+    return this.putMsp(deviceId, applySetpointPolicy(data, {
       mode: data.mode,
       heatSetpoint: heatSetpoint ?? data.heatSetpoint,
       coolSetpoint: coolSetpoint ?? data.coolSetpoint,
@@ -219,7 +220,7 @@ export class DaikinOpenApiClient {
         if (this.config.logRaw) {
           this.log.info('Raw Daikin payload for %s: %s', device.id, JSON.stringify(data));
         }
-        this.updateDeviceData(device.id, this.normalizeThermostatData(data));
+        this.updateDeviceData(device.id, normalizeThermostatData(data));
         this.notify(device.id);
       } catch (error) {
         this.logError(`Unable to refresh ${device.name} (${device.id}).`, error);
@@ -282,30 +283,7 @@ export class DaikinOpenApiClient {
   }
 
   private async fetchJson<T>(url: string, init: RequestInit): Promise<T> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
-
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        ...init,
-        signal: controller.signal,
-      });
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`Request ${url} timed out after ${this.requestTimeoutMs / 1000} seconds.`);
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    if (!response.ok) {
-      throw new Error(`Request ${url} failed with ${response.status} ${response.statusText}: ${await response.text()}`);
-    }
-
-    const text = await response.text();
-    return (text.length > 0 ? JSON.parse(text) : undefined) as T;
+    return this.http.fetchJson<T>(url, init);
   }
 
   private baseHeaders(): Record<string, string> {
@@ -350,105 +328,8 @@ export class DaikinOpenApiClient {
     return Number(hrtime.bigint() / BigInt(1_000_000));
   }
 
-  private normalizeThermostatData(payload: Record<string, unknown>): DaikinThermostatData {
-    return {
-      equipmentStatus: this.numberFrom(payload.equipmentStatus, EquipmentStatus.IDLE) as EquipmentStatus,
-      mode: this.normalizeMode(payload.mode),
-      modeLimit: this.optionalNumber(payload.modeLimit),
-      modeEmHeatAvailable: this.optionalBooleanOrNumber(payload.modeEmHeatAvailable),
-      fan: this.optionalNumber(payload.fan),
-      fanCirculate: this.optionalNumber(payload.fanCirculate),
-      fanCirculateSpeed: this.optionalNumber(payload.fanCirculateSpeed),
-      heatSetpoint: this.numberFrom(payload.heatSetpoint, 20),
-      coolSetpoint: this.numberFrom(payload.coolSetpoint, 24),
-      setpointDelta: this.optionalNumber(payload.setpointDelta),
-      setpointMinimum: this.optionalNumber(payload.setpointMinimum),
-      setpointMaximum: this.optionalNumber(payload.setpointMaximum),
-      tempIndoor: this.numberFrom(payload.tempIndoor, -270),
-      humIndoor: this.optionalNumber(payload.humIndoor),
-      tempOutdoor: this.optionalNumber(payload.tempOutdoor),
-      humOutdoor: this.optionalNumber(payload.humOutdoor),
-      scheduleEnabled: this.optionalBoolean(payload.scheduleEnabled),
-      geofencingEnabled: this.optionalBoolean(payload.geofencingEnabled),
-    };
-  }
-
-  private withSetpointDelta(data: DaikinThermostatData, update: DaikinThermostatUpdate): DaikinThermostatUpdate {
-    const minimum = data.setpointMinimum ?? 10;
-    const maximum = data.setpointMaximum ?? 35;
-    const delta = data.setpointDelta ?? 1.5;
-
-    let heatSetpoint = this.clamp(update.heatSetpoint, minimum, maximum);
-    let coolSetpoint = this.clamp(update.coolSetpoint, minimum, maximum);
-
-    if (update.mode === ThermostatMode.AUTO && coolSetpoint - heatSetpoint < delta) {
-      if (update.coolSetpoint !== data.coolSetpoint) {
-        heatSetpoint = this.clamp(coolSetpoint - delta, minimum, maximum);
-        coolSetpoint = this.clamp(Math.max(coolSetpoint, heatSetpoint + delta), minimum, maximum);
-      } else {
-        coolSetpoint = this.clamp(heatSetpoint + delta, minimum, maximum);
-        heatSetpoint = this.clamp(Math.min(heatSetpoint, coolSetpoint - delta), minimum, maximum);
-      }
-    }
-
-    return {
-      mode: update.mode,
-      heatSetpoint,
-      coolSetpoint,
-    };
-  }
-
   private normalizeMode(value: unknown): ThermostatMode {
-    const mode = this.numberFrom(value, ThermostatMode.OFF);
-    switch (mode) {
-      case ThermostatMode.HEAT:
-      case ThermostatMode.COOL:
-      case ThermostatMode.AUTO:
-      case ThermostatMode.EMERGENCY_HEAT:
-        return mode;
-      default:
-        return ThermostatMode.OFF;
-    }
-  }
-
-  private optionalBoolean(value: unknown): boolean | undefined {
-    if (typeof value === 'boolean') {
-      return value;
-    }
-    if (typeof value === 'number') {
-      return value !== 0;
-    }
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return value.toLowerCase() === 'true' || value === '1';
-    }
-    return undefined;
-  }
-
-  private optionalBooleanOrNumber(value: unknown): number | boolean | undefined {
-    if (typeof value === 'boolean') {
-      return value;
-    }
-    return this.optionalNumber(value);
-  }
-
-  private optionalNumber(value: unknown): number | undefined {
-    const numberValue = this.numberFrom(value, Number.NaN);
-    return Number.isFinite(numberValue) ? numberValue : undefined;
-  }
-
-  private numberFrom(value: unknown, fallback: number): number {
-    if (typeof value === 'number') {
-      return Number.isFinite(value) ? value : fallback;
-    }
-    if (typeof value === 'string') {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : fallback;
-    }
-    return fallback;
-  }
-
-  private clamp(value: number, min: number, max: number): number {
-    return Math.min(max, Math.max(min, value));
+    return normalizeMode(value);
   }
 
   private debug(message: string, ...parameters: unknown[]): void {

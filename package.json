@@ -3,8 +3,17 @@
   "name": "homebridge-daikin-one-openapi",
   "version": "0.1.0",
   "description": "Homebridge platform for Daikin One+ thermostats using Daikin One Open API integration tokens.",
+  "author": "osdouglas",
   "license": "MIT",
   "type": "module",
+  "homepage": "https://github.com/osdouglas/homebridge-daikin-one-openapi#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdouglas/homebridge-daikin-one-openapi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/osdouglas/homebridge-daikin-one-openapi/issues"
+  },
   "main": "dist/index.js",
   "files": [
     "dist",
@@ -12,7 +21,7 @@
     "README.md"
   ],
   "engines": {
-    "node": "^20.18.0 || ^22.10.0 || ^24.0.0",
+    "node": "^22.10.0 || ^24.0.0",
     "homebridge": "^1.8.0 || ^2.0.0-beta.0"
   },
   "keywords": [
@@ -25,9 +34,10 @@
   ],
   "scripts": {
     "build": "rimraf ./dist && tsc",
+    "lint": "tsc --noEmit",
     "test": "rimraf ./dist && tsc && node --test test/*.test.mjs",
     "watch": "tsc --watch",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run lint && npm run build"
   },
   "dependencies": {},
   "devDependencies": {
