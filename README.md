@@ -4,6 +4,28 @@ Homebridge platform plugin for Daikin One+ thermostats using the Daikin One Open
 
 The plugin authenticates with `apiKey`, `integratorEmail`, and `integratorToken` against `https://integrator-api.daikinskyport.com`.
 
+Official Daikin Open API docs:
+
+- [Overview](https://www.daikinone.com/openapi/overview/index.html)
+- [Documentation](https://www.daikinone.com/openapi/documentation/index.html)
+- [License Terms](https://www.daikinone.com/openapi/overview/terms/index.html)
+
+## Project Shape
+
+This project should be boring. It maps the Daikin One Open API to Homebridge/HomeKit with as little policy as possible.
+
+The code should only need to change when Homebridge, HomeKit, or the Daikin Open API contract changes. Normal API contents, device counts, optional fields, zoned/non-zoned setups, and runtime cloud behavior should be handled by configuration, tolerant parsing, tests, or logging.
+
+Design rules:
+
+- Keep Homebridge wiring, Open API transport, payload normalization, and thermostat policy separate.
+- Prefer small functions and narrow interfaces over framework-shaped abstractions.
+- Keep the Open API client injectable enough to test, but do not hide the API behind a second domain model.
+- Treat unknown or missing Open API fields as data, not as reasons to crash.
+- Add tests at the adapter boundary: API payloads in, HomeKit values and Daikin write payloads out.
+
+See [DESIGN.md](DESIGN.md) for the code boundaries and non-goals.
+
 ## Target Setup
 
 The first target system is a Daikin FIT communicating HVAC system with a DH6V communicating air handler, Daikin One+ Smart Thermostat, and dual-zone configuration managed through the SkyportHome / Daikin One cloud platform.
@@ -11,6 +33,32 @@ The first target system is a Daikin FIT communicating HVAC system with a DH6V co
 Each device returned by the Open API is exposed as a HomeKit thermostat accessory. If your zoned system exposes each zone as a separate API device, Homebridge will create a thermostat for each zone. If the Open API returns one parent thermostat with embedded zone data instead, the raw payload can be logged with `logRaw` so zone support can be extended against your actual response shape.
 
 ## Configuration
+
+When installed in Homebridge, the plugin exposes `apiKey`, `integratorEmail`, and `integratorToken` in the Homebridge UI. The API key and integration token are rendered as password fields by `config.schema.json`, so they can be entered during configuration without hard-coding them in this repository.
+
+The integrator token email alone is not enough to run the plugin. The Daikin Open API flow also requires an API key for the integration.
+
+## Getting Open API Credentials
+
+Follow Daikin's [Open API documentation](https://www.daikinone.com/openapi/documentation/index.html). The summary below is a local copy of the expected flow as documented by Daikin at the time this repository was written.
+
+Definitions:
+
+- Owner: the entity using the integration to control the system.
+- Developer: the entity performing the Open API integration. For development, this may be the same entity as the owner.
+
+Steps:
+
+1. The owner installs the SkyportHome app, creates an account, and follows the app instructions to add thermostats.
+2. The owner requests the Integrator Token in the SkyportHome app: `SkyportCare` -> `home integration` -> `get integration token`. The owner must agree to the Integration Token Terms, enter their password, and follow the app instructions.
+3. The developer requests an API Key from the same homeowner app after enabling the developer menu.
+4. On iOS, enable the developer menu from the iOS Settings app: `SkyportHome` -> developer menu.
+5. On Android, open the Home App, go to `SkyportCare` -> `home integration`, then tap the page description 5 times to enable the developer menu.
+6. After the developer menu is enabled, go to `SkyportCare` -> `home integration` -> `developer`, accept the Daikin B2B Terms and Daikin One Open API License Terms, enter the application name, and submit the request.
+
+Keep the API Key and Integrator Token secure. Daikin's [API Terms](https://www.daikinone.com/openapi/overview/terms/index.html) say not to forward either credential to a third party.
+
+Requests send `x-api-key`; all requests except `POST /v1/token` also send `Authorization: Bearer ...`.
 
 ```json
 {
@@ -20,6 +68,7 @@ Each device returned by the Open API is exposed as a HomeKit thermostat accessor
   "integratorEmail": "email-used-in-the-daikin-one-app@example.com",
   "integratorToken": "your-integrator-token",
   "pollIntervalSeconds": 180,
+  "requestTimeoutSeconds": 20,
   "includeDeviceName": true,
   "readonly": false,
   "debug": false,
@@ -27,18 +76,97 @@ Each device returned by the Open API is exposed as a HomeKit thermostat accessor
 }
 ```
 
-Open API polling is kept at a minimum of 180 seconds to respect Daikin Open API rate guidance.
+`deviceIds` can be used to expose only selected thermostats/zones after discovery. Leave it empty at first, enable `debug` temporarily, and the startup log will show the device count returned by the Open API.
+
+## Polling And Writes
+
+Regular cloud polling is kept at a minimum of 180 seconds, matching Daikin's documented minimum polling interval. That protects the Open API integration from noisy HomeKit refreshes and keeps the plugin polite to Daikin's cloud.
+
+HomeKit does not have to wait for the next regular poll after a write. When HomeKit changes mode or setpoints, the plugin:
+
+1. sends the Daikin `PUT /v1/devices/{deviceId}/msp` request,
+2. treats a successful HTTP response as the write acknowledgment,
+3. updates the local HomeKit-facing state immediately from the accepted write payload,
+4. schedules a confirmatory cloud refresh shortly after the write.
+
+That gives HomeKit quick feedback without polling the cloud aggressively. Daikin documents that successful changes may take at least 15 seconds to be reflected, so the confirmatory refresh waits before reconciling. If Daikin later exposes a stronger write result, event stream, webhook, or push mechanism through the Open API, that should replace or supplement the short confirmatory refresh.
+
+## Testing With Real Credentials
+
+Do not put a real Daikin token in a file committed to this repository. For manual testing, use a separate Homebridge instance or child bridge and enter the Open API values through Homebridge UI.
+
+A local test `config.json` should live outside the repo, for example in `~/.homebridge-daikin-test/config.json`:
+
+```json
+{
+  "bridge": {
+    "name": "Daikin Test Bridge",
+    "username": "0E:11:22:33:44:55",
+    "port": 51877,
+    "pin": "031-45-154"
+  },
+  "platforms": [
+    {
+      "platform": "DaikinOneOpenAPI",
+      "name": "Daikin One",
+      "apiKey": "your-daikin-open-api-key",
+      "integratorEmail": "email-used-in-the-daikin-one-app@example.com",
+      "integratorToken": "your-integrator-token",
+      "readonly": true,
+      "debug": true,
+      "logRaw": true
+    }
+  ]
+}
+```
+
+Start in `readonly` mode first. Once discovery and state updates look right, set `logRaw` back to `false`, then set `readonly` to `false` for write testing.
 
 ## Notes
 
 - HomeKit expects Celsius values for thermostat characteristics. Daikin One Open API temperature values are treated as Celsius.
 - Writes use `PUT /v1/devices/{deviceId}/msp` with `mode`, `heatSetpoint`, and `coolSetpoint`.
+- Setpoint min, max, and auto-mode heat/cool separation are read from the Open API when present.
+- Successful writes update HomeKit immediately, then reconcile against the cloud shortly afterward.
 - Set `readonly` to `true` while validating a new system if you want HomeKit to display state without sending mode or setpoint changes.
-- Set `logRaw` only temporarily. It may log device IDs and detailed HVAC state.
+- Set `logRaw` only temporarily. It may log device IDs and detailed HVAC state. This is the first thing to enable if your dual-zone system appears in the Daikin One app but Homebridge only creates one thermostat; the raw response will show whether Daikin exposes zones as separate devices or nested data.
 
 ## Development
+
+Use any Node setup you prefer that satisfies the `engines.node` range in `package.json`. The repository includes a `pnpm-lock.yaml`, so the examples below use pnpm.
 
 ```sh
 pnpm install
 pnpm build
+pnpm test
 ```
+
+The unit tests use Node's built-in `node:test` runner and import the compiled files from `dist`. The `test` script builds first, then runs `test/*.test.mjs`.
+
+Using npm is also fine for local development:
+
+```sh
+npm install
+npm test
+```
+
+Keep unit tests focused on the thin adapter behavior: mocked Open API responses in, Homebridge/HomeKit-facing values and Daikin write payloads out. Live cloud testing should stay manual and use `readonly` mode first.
+
+CI runs the same lint and test checks on pull requests and pushes.
+
+## Installing From A Branch
+
+The package is TypeScript source, but Homebridge runs compiled JavaScript from `dist`. Published npm packages include `dist`. Git branch installs use the npm `prepare` script to build `dist` after npm clones the branch.
+
+For the standard Homebridge Raspberry Pi image, load the Homebridge runtime environment before installing. That puts the bundled `node` and `npm` on `PATH`:
+
+```sh
+sudo -u homebridge env HOME=/home/homebridge sh -lc '
+  . /opt/homebridge/source.sh
+  npm install --prefix /var/lib/homebridge github:osdouglas/homebridge-daikin-one-openapi#codex/create-pykinone-homebridge-plugin
+'
+
+sudo hb-service restart
+```
+
+Start with `readonly: true` in the Homebridge config until discovery and state updates look correct.

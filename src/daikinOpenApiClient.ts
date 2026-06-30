@@ -2,6 +2,10 @@ import { hrtime } from 'node:process';
 
 import type { Logging } from 'homebridge';
 
+import { normalizeMode, normalizeThermostatData } from './daikinOpenApiMapper.js';
+import { FetchJsonHttpClient, type JsonHttpClient } from './httpClient.js';
+import { applySetpointPolicy } from './setpointPolicy.js';
+import { EquipmentStatus, ThermostatMode } from './types.js';
 import type {
   DaikinDevice,
   DaikinLocation,
@@ -35,6 +39,7 @@ export class DaikinOpenApiClient {
   public constructor(
     private readonly config: DaikinPlatformConfig,
     private readonly log: Logging,
+    private readonly http: JsonHttpClient = new FetchJsonHttpClient(config.requestTimeoutSeconds),
   ) {
     this.pollIntervalMs = Math.max(180, config.pollIntervalSeconds) * 1000;
   }
@@ -78,11 +83,11 @@ export class DaikinOpenApiClient {
   }
 
   public getCurrentStatus(deviceId: string): number {
-    return this.devices.get(deviceId)?.data?.equipmentStatus ?? 5;
+    return this.devices.get(deviceId)?.data?.equipmentStatus ?? EquipmentStatus.IDLE;
   }
 
   public getMode(deviceId: string): number {
-    return this.devices.get(deviceId)?.data?.mode ?? 0;
+    return this.devices.get(deviceId)?.data?.mode ?? ThermostatMode.OFF;
   }
 
   public getCurrentTemperature(deviceId: string): number {
@@ -94,7 +99,7 @@ export class DaikinOpenApiClient {
     if (!data) {
       return -270;
     }
-    return data.mode === 2 ? data.coolSetpoint : data.heatSetpoint;
+    return data.mode === ThermostatMode.COOL ? data.coolSetpoint : data.heatSetpoint;
   }
 
   public getHeatingThreshold(deviceId: string): number {
@@ -103,6 +108,18 @@ export class DaikinOpenApiClient {
 
   public getCoolingThreshold(deviceId: string): number {
     return this.devices.get(deviceId)?.data?.coolSetpoint ?? -270;
+  }
+
+  public getSetpointMinimum(deviceId: string): number {
+    return this.devices.get(deviceId)?.data?.setpointMinimum ?? 10;
+  }
+
+  public getSetpointMaximum(deviceId: string): number {
+    return this.devices.get(deviceId)?.data?.setpointMaximum ?? 35;
+  }
+
+  public getSetpointDelta(deviceId: string): number {
+    return this.devices.get(deviceId)?.data?.setpointDelta ?? 1.5;
   }
 
   public getCurrentHumidity(deviceId: string): number {
@@ -116,11 +133,11 @@ export class DaikinOpenApiClient {
       return false;
     }
 
-    return this.putMsp(deviceId, {
-      mode,
+    return this.putMsp(deviceId, applySetpointPolicy(data, {
+      mode: this.normalizeMode(mode),
       heatSetpoint: data.heatSetpoint,
       coolSetpoint: data.coolSetpoint,
-    });
+    }));
   }
 
   public async setTargetTemperature(deviceId: string, temperature: number): Promise<boolean> {
@@ -130,17 +147,17 @@ export class DaikinOpenApiClient {
       return false;
     }
 
-    if (data.mode === 0) {
+    if (data.mode === ThermostatMode.OFF) {
       this.log.debug('Ignoring target temperature write while %s is off.', deviceId);
       return true;
     }
 
     const update =
-      data.mode === 2
+      data.mode === ThermostatMode.COOL
         ? { mode: data.mode, heatSetpoint: data.heatSetpoint, coolSetpoint: temperature }
         : { mode: data.mode, heatSetpoint: temperature, coolSetpoint: data.coolSetpoint };
 
-    return this.putMsp(deviceId, update);
+    return this.putMsp(deviceId, applySetpointPolicy(data, update));
   }
 
   public async setThresholds(deviceId: string, heatSetpoint?: number, coolSetpoint?: number): Promise<boolean> {
@@ -150,11 +167,11 @@ export class DaikinOpenApiClient {
       return false;
     }
 
-    return this.putMsp(deviceId, {
+    return this.putMsp(deviceId, applySetpointPolicy(data, {
       mode: data.mode,
       heatSetpoint: heatSetpoint ?? data.heatSetpoint,
       coolSetpoint: coolSetpoint ?? data.coolSetpoint,
-    });
+    }));
   }
 
   private async authenticate(): Promise<void> {
@@ -199,8 +216,11 @@ export class DaikinOpenApiClient {
     await this.ensureToken();
     for (const device of this.devices.values()) {
       try {
-        const data = await this.authorizedGet<DaikinThermostatData>(`${DEVICES_URL}/${device.id}`);
-        this.updateDeviceData(device.id, data);
+        const data = await this.authorizedGet<Record<string, unknown>>(`${DEVICES_URL}/${device.id}`);
+        if (this.config.logRaw) {
+          this.log.info('Raw Daikin payload for %s: %s', device.id, JSON.stringify(data));
+        }
+        this.updateDeviceData(device.id, normalizeThermostatData(data));
         this.notify(device.id);
       } catch (error) {
         this.logError(`Unable to refresh ${device.name} (${device.id}).`, error);
@@ -216,6 +236,9 @@ export class DaikinOpenApiClient {
 
     try {
       await this.ensureToken();
+      if (this.config.logRaw) {
+        this.log.info('Daikin write payload for %s: %s', deviceId, JSON.stringify(update));
+      }
       await this.fetchJson<unknown>(`${DEVICES_URL}/${deviceId}/msp`, {
         method: 'PUT',
         headers: this.authorizedHeaders(),
@@ -233,7 +256,7 @@ export class DaikinOpenApiClient {
     }
   }
 
-  private updateDeviceData(deviceId: string, update: DaikinThermostatUpdate | DaikinThermostatData): void {
+  private updateDeviceData(deviceId: string, update: DaikinThermostatUpdate | Partial<DaikinThermostatData>): void {
     const device = this.devices.get(deviceId);
     if (!device) {
       this.log.error('Received update for unknown device %s.', deviceId);
@@ -244,10 +267,6 @@ export class DaikinOpenApiClient {
       ...(device.data ?? {}),
       ...update,
     } as DaikinThermostatData;
-
-    if (this.config.logRaw) {
-      this.log.info('Daikin payload for %s: %s', deviceId, JSON.stringify(update));
-    }
   }
 
   private async authorizedGet<T>(url: string): Promise<T> {
@@ -264,13 +283,7 @@ export class DaikinOpenApiClient {
   }
 
   private async fetchJson<T>(url: string, init: RequestInit): Promise<T> {
-    const response = await fetch(url, init);
-
-    if (!response.ok) {
-      throw new Error(`Request ${url} failed with ${response.status} ${response.statusText}: ${await response.text()}`);
-    }
-
-    return (await response.json()) as T;
+    return this.http.fetchJson<T>(url, init);
   }
 
   private baseHeaders(): Record<string, string> {
@@ -302,6 +315,7 @@ export class DaikinOpenApiClient {
         .catch(error => this.logError('Scheduled Daikin refresh failed.', error))
         .finally(() => this.scheduleRefresh(this.pollIntervalMs));
     }, delayMs);
+    this.refreshTimer.unref?.();
   }
 
   private notify(deviceId: string): void {
@@ -312,6 +326,10 @@ export class DaikinOpenApiClient {
 
   private monotonicMs(): number {
     return Number(hrtime.bigint() / BigInt(1_000_000));
+  }
+
+  private normalizeMode(value: unknown): ThermostatMode {
+    return normalizeMode(value);
   }
 
   private debug(message: string, ...parameters: unknown[]): void {

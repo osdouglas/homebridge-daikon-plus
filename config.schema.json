@@ -13,23 +13,41 @@
       "apiKey": {
         "title": "API Key",
         "type": "string",
-        "required": true
+        "required": true,
+        "description": "Daikin One Open API key for this integration.",
+        "x-schema-form": {
+          "type": "password"
+        }
       },
       "integratorEmail": {
         "title": "Integrator Email",
         "type": "string",
-        "required": true
+        "required": true,
+        "description": "Email address used with the Daikin One app.",
+        "x-schema-form": {
+          "type": "username"
+        }
       },
       "integratorToken": {
         "title": "Integrator Token",
         "type": "string",
-        "required": true
+        "required": true,
+        "description": "Daikin One Open API integration token from the Daikin One app.",
+        "x-schema-form": {
+          "type": "password"
+        }
       },
       "pollIntervalSeconds": {
         "title": "Poll Interval Seconds",
         "type": "integer",
         "default": 180,
         "minimum": 180
+      },
+      "requestTimeoutSeconds": {
+        "title": "Request Timeout Seconds",
+        "type": "integer",
+        "default": 20,
+        "minimum": 1
       },
       "includeDeviceName": {
         "title": "Include Device Name",
@@ -66,6 +84,7 @@
     "integratorEmail",
     "integratorToken",
     "pollIntervalSeconds",
+    "requestTimeoutSeconds",
     "includeDeviceName",
     "deviceIds",
     "readonly",

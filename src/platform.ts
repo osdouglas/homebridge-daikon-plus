@@ -8,6 +8,7 @@ import type {
   Service,
 } from 'homebridge';
 
+import { parsePlatformConfig } from './config.js';
 import { DaikinOpenApiClient } from './daikinOpenApiClient.js';
 import { DaikinThermostatAccessory } from './thermostatAccessory.js';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
@@ -16,8 +17,8 @@ import type { AccessoryContext, DaikinDevice, DaikinPlatformConfig } from './typ
 export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
   public readonly Characteristic: typeof Characteristic;
-  public readonly config: DaikinPlatformConfig;
-  public readonly client: DaikinOpenApiClient;
+  public readonly config?: DaikinPlatformConfig;
+  private readonly daikinClient?: DaikinOpenApiClient;
   private readonly accessories: PlatformAccessory<AccessoryContext>[] = [];
 
   public constructor(
@@ -27,8 +28,18 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
   ) {
     this.Service = api.hap.Service;
     this.Characteristic = api.hap.Characteristic;
-    this.config = this.parseConfig(rawConfig);
-    this.client = new DaikinOpenApiClient(this.config, log);
+
+    const parsed = parsePlatformConfig(rawConfig);
+    if (!parsed.ok) {
+      this.log.warn(
+        'Daikin Open API platform is not configured. Missing required value(s): %s',
+        parsed.missing.join(', '),
+      );
+      return;
+    }
+
+    this.config = parsed.config;
+    this.daikinClient = new DaikinOpenApiClient(this.config, log);
 
     api.on('didFinishLaunching', () => {
       void this.discover();
@@ -40,16 +51,27 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
     this.accessories.push(accessory);
   }
 
+  public get client(): DaikinOpenApiClient {
+    if (!this.daikinClient) {
+      throw new Error('Daikin Open API client is unavailable because the platform is not configured.');
+    }
+    return this.daikinClient;
+  }
+
   public accessoryName(device: DaikinDevice, suffix: string): string {
-    if (this.config.includeDeviceName) {
+    if (this.config?.includeDeviceName) {
       return suffix ? `${device.name} ${suffix}` : device.name;
     }
-    return suffix || this.config.name;
+    return suffix || this.config?.name || 'Daikin One';
   }
 
   private async discover(): Promise<void> {
+    if (!this.daikinClient) {
+      return;
+    }
+
     try {
-      await this.client.initialize();
+      await this.daikinClient.initialize();
     } catch (error) {
       this.log.error('Daikin Open API discovery failed.');
       this.log.error(error instanceof Error ? error.message : String(error));
@@ -57,7 +79,7 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
     }
 
     const activeAccessoryIds = new Set<string>();
-    for (const device of this.client.getDeviceList()) {
+    for (const device of this.daikinClient.getDeviceList()) {
       activeAccessoryIds.add(this.registerThermostat(device).UUID);
     }
 
@@ -86,27 +108,5 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
 
     new DaikinThermostatAccessory(this, accessory, device.id);
     return accessory;
-  }
-
-  private parseConfig(config: PlatformConfig): DaikinPlatformConfig {
-    const requiredStrings = ['apiKey', 'integratorEmail', 'integratorToken'] as const;
-    for (const key of requiredStrings) {
-      if (typeof config[key] !== 'string' || config[key].trim().length === 0) {
-        throw new Error(`Missing required Daikin Open API config value: ${key}`);
-      }
-    }
-
-    return {
-      name: typeof config.name === 'string' && config.name.length > 0 ? config.name : 'Daikin One',
-      apiKey: String(config.apiKey),
-      integratorEmail: String(config.integratorEmail),
-      integratorToken: String(config.integratorToken),
-      pollIntervalSeconds: typeof config.pollIntervalSeconds === 'number' ? Math.max(180, config.pollIntervalSeconds) : 180,
-      includeDeviceName: config.includeDeviceName !== false,
-      deviceIds: Array.isArray(config.deviceIds) ? config.deviceIds.filter((id): id is string => typeof id === 'string') : [],
-      readonly: Boolean(config.readonly),
-      debug: Boolean(config.debug),
-      logRaw: Boolean(config.logRaw),
-    };
   }
 }
