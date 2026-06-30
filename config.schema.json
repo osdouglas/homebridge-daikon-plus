@@ -14,7 +14,7 @@
         "title": "API Key",
         "type": "string",
         "required": true,
-        "description": "Daikin One Open API key from the Daikin One app.",
+        "description": "Daikin One Open API key for this integration.",
         "x-schema-form": {
           "type": "password"
         }

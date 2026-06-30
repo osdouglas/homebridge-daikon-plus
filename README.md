@@ -30,6 +30,8 @@ Each device returned by the Open API is exposed as a HomeKit thermostat accessor
 
 When installed in Homebridge, the plugin exposes `apiKey`, `integratorEmail`, and `integratorToken` in the Homebridge UI. The API key and integration token are rendered as password fields by `config.schema.json`, so they can be entered during configuration without hard-coding them in this repository.
 
+The integrator token email alone is not enough to run the plugin. The Daikin Open API flow also requires an API key for the integration.
+
 ```json
 {
   "platform": "DaikinOneOpenAPI",

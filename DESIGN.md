@@ -53,6 +53,12 @@ Writes are faster than regular polling:
 
 If the Open API later exposes a stronger write response, event stream, webhook, or push mechanism, use that instead of increasing background polling.
 
+## Authentication
+
+Support one golden path: Daikin One Open API integration credentials. The required inputs are the API key, the SkyportHome account email, and the integrator token.
+
+Do not add fallback authentication modes or alternate header behavior based on third-party code. If Daikin changes the official Open API authentication contract, update this path and its tests.
+
 ## Testing
 
 Unit tests should stay at the adapter boundary:
