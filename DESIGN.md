@@ -55,7 +55,9 @@ If the Open API later exposes a stronger write response, event stream, webhook, 
 
 ## Authentication
 
-Support one golden path: Daikin One Open API integration credentials. The required inputs are the API key, the SkyportHome account email, and the integrator token.
+Support one golden path: Daikin One Open API integration credentials as documented by Daikin. The required inputs are the API key, the SkyportHome account email, and the integrator token.
+
+The API key is sent as `x-api-key`. The access token from `POST /v1/token` is sent as `Authorization: Bearer ...` on all later requests.
 
 Do not add fallback authentication modes or alternate header behavior based on third-party code. If Daikin changes the official Open API authentication contract, update this path and its tests.
 

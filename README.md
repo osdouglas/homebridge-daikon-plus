@@ -4,6 +4,12 @@ Homebridge platform plugin for Daikin One+ thermostats using the Daikin One Open
 
 The plugin authenticates with `apiKey`, `integratorEmail`, and `integratorToken` against `https://integrator-api.daikinskyport.com`.
 
+Official Daikin Open API docs:
+
+- [Overview](https://www.daikinone.com/openapi/overview/index.html)
+- [Documentation](https://www.daikinone.com/openapi/documentation/index.html)
+- [License Terms](https://www.daikinone.com/openapi/overview/terms/index.html)
+
 ## Project Shape
 
 This project should be boring. It maps the Daikin One Open API to Homebridge/HomeKit with as little policy as possible.
@@ -32,6 +38,12 @@ When installed in Homebridge, the plugin exposes `apiKey`, `integratorEmail`, an
 
 The integrator token email alone is not enough to run the plugin. The Daikin Open API flow also requires an API key for the integration.
 
+Per Daikin's docs:
+
+- The thermostat owner requests the Integrator Token in the SkyportHome app under `SkyportCare` -> `home integration` -> `get integration token`.
+- The developer requests an API Key from the same app after enabling the developer menu.
+- Requests send `x-api-key`; all requests except `POST /v1/token` also send `Authorization: Bearer ...`.
+
 ```json
 {
   "platform": "DaikinOneOpenAPI",
@@ -52,7 +64,7 @@ The integrator token email alone is not enough to run the plugin. The Daikin Ope
 
 ## Polling And Writes
 
-Regular cloud polling is kept at a minimum of 180 seconds. That protects the Open API integration from noisy HomeKit refreshes and keeps the plugin polite to Daikin's cloud.
+Regular cloud polling is kept at a minimum of 180 seconds, matching Daikin's documented minimum polling interval. That protects the Open API integration from noisy HomeKit refreshes and keeps the plugin polite to Daikin's cloud.
 
 HomeKit does not have to wait for the next regular poll after a write. When HomeKit changes mode or setpoints, the plugin:
 
@@ -61,7 +73,7 @@ HomeKit does not have to wait for the next regular poll after a write. When Home
 3. updates the local HomeKit-facing state immediately from the accepted write payload,
 4. schedules a confirmatory cloud refresh shortly after the write.
 
-That gives HomeKit quick feedback without polling the cloud aggressively. If Daikin later exposes a stronger write result, event stream, webhook, or push mechanism through the Open API, that should replace or supplement the short confirmatory refresh.
+That gives HomeKit quick feedback without polling the cloud aggressively. Daikin documents that successful changes may take at least 15 seconds to be reflected, so the confirmatory refresh waits before reconciling. If Daikin later exposes a stronger write result, event stream, webhook, or push mechanism through the Open API, that should replace or supplement the short confirmatory refresh.
 
 ## Testing With Real Credentials
 
