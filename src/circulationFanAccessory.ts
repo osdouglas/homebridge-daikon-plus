@@ -124,7 +124,7 @@ export class DaikinCirculationFanAccessory {
     }
 
     await this.platform.client.setFanCirculation(this.deviceId, {
-      fanCirculate: this.activeCirculationMode(),
+      fanCirculate: this.activeCirculationMode({ preferManual: true }),
       fanCirculateSpeed: this.rotationSpeedToSpeed(rotationSpeed),
     });
   }
