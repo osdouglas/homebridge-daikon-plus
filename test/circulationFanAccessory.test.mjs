@@ -42,6 +42,22 @@ test('reserves zero rotation speed for inactive circulation fan', async () => {
   assert.equal(await accessory.getService('Fanv2').getCharacteristic(characteristic.Active).get(), characteristic.Active.INACTIVE);
 });
 
+test('maps HomeKit rotation speed bands back to Daikin fan speeds', async () => {
+  const { accessory, client, characteristic } = fixture({
+    fanCirculate: 1,
+    fanCirculateSpeed: 0,
+  });
+
+  new DaikinCirculationFanAccessory(platform(client, characteristic), accessory, 'zone-1');
+  const rotationSpeed = accessory.getService('Fanv2').getCharacteristic(characteristic.RotationSpeed);
+
+  await rotationSpeed.set(33);
+  await rotationSpeed.set(66);
+  await rotationSpeed.set(67);
+
+  assert.deepEqual(client.fanWrites.map(write => write.update.fanCirculateSpeed), [0, 1, 2]);
+});
+
 function fixture({ fanCirculate, fanCirculateSpeed }) {
   const characteristic = fakeCharacteristic();
   const client = {

@@ -138,10 +138,10 @@ export class DaikinCirculationFanAccessory {
   }
 
   private rotationSpeedToSpeed(rotationSpeed: number): FanCirculateSpeed {
-    if (rotationSpeed <= 0) {
+    if (rotationSpeed <= 33) {
       return FanCirculateSpeed.LOW;
     }
-    if (rotationSpeed <= 50) {
+    if (rotationSpeed <= 66) {
       return FanCirculateSpeed.MEDIUM;
     }
     return FanCirculateSpeed.HIGH;
