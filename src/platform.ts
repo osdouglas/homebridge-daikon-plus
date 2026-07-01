@@ -14,7 +14,7 @@ import { DaikinOpenApiClient } from './daikinOpenApiClient.js';
 import { DaikinOutdoorUnitAccessory } from './outdoorUnitAccessory.js';
 import { DaikinThermostatAccessory } from './thermostatAccessory.js';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
-import type { AccessoryContext, DaikinDevice, DaikinPlatformConfig } from './types.js';
+import type { AccessoryCapabilities, AccessoryContext, DaikinDevice, DaikinPlatformConfig } from './types.js';
 
 export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
@@ -89,11 +89,12 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
 
     const activeAccessoryIds = new Set<string>();
     for (const device of this.daikinClient.getDeviceList()) {
-      activeAccessoryIds.add(this.registerThermostat(device).UUID);
-      if (this.daikinClient.hasOutdoorData(device.id)) {
+      const thermostatAccessory = this.registerThermostat(device);
+      activeAccessoryIds.add(thermostatAccessory.UUID);
+      if (thermostatAccessory.context.capabilities?.outdoorUnit) {
         activeAccessoryIds.add(this.registerOutdoorUnit(device).UUID);
       }
-      if (this.daikinClient.hasFanCirculationData(device.id)) {
+      if (thermostatAccessory.context.capabilities?.circulationFan) {
         activeAccessoryIds.add(this.registerCirculationFan(device).UUID);
       }
     }
@@ -121,6 +122,7 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
       this.log.info('Added thermostat: %s', displayName);
     }
 
+    this.updateDiscoveredCapabilities(accessory, device.id);
     new DaikinThermostatAccessory(this, accessory, device.id);
     return accessory;
   }
@@ -165,5 +167,46 @@ export class DaikinOpenApiPlatform implements DynamicPlatformPlugin {
 
     new DaikinCirculationFanAccessory(this, accessory, device.id);
     return accessory;
+  }
+
+  private updateDiscoveredCapabilities(
+    accessory: PlatformAccessory<AccessoryContext>,
+    deviceId: string,
+  ): AccessoryCapabilities {
+    const capabilities = this.capabilities(accessory);
+
+    if (
+      this.daikinClient?.hasOutdoorData(deviceId) ||
+      this.findAccessory(deviceId, 'outdoor-unit')
+    ) {
+      capabilities.outdoorUnit = true;
+    }
+    if (
+      this.daikinClient?.hasFanCirculationData(deviceId) ||
+      this.findAccessory(deviceId, 'circulation-fan')
+    ) {
+      capabilities.circulationFan = true;
+    }
+    if (
+      this.daikinClient?.hasScheduleData(deviceId) ||
+      accessory.getServiceById(this.Service.Switch, 'schedule')
+    ) {
+      capabilities.schedule = true;
+    }
+
+    return capabilities;
+  }
+
+  private capabilities(accessory: PlatformAccessory<AccessoryContext>): AccessoryCapabilities {
+    accessory.context.capabilities ??= {};
+    return accessory.context.capabilities;
+  }
+
+  private findAccessory(
+    deviceId: string,
+    suffix: 'circulation-fan' | 'outdoor-unit' | 'thermostat',
+  ): PlatformAccessory<AccessoryContext> | undefined {
+    const uuid = this.api.hap.uuid.generate(`${deviceId}:${suffix}`);
+    return this.accessories.find(existing => existing.UUID === uuid);
   }
 }

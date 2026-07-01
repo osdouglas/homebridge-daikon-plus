@@ -243,6 +243,14 @@ export class DaikinOpenApiClient {
   }
 
   public async setScheduleEnabled(deviceId: string, scheduleEnabled: boolean): Promise<boolean> {
+    if (!this.hasScheduleData(deviceId)) {
+      this.log.warn(
+        'Skipping Daikin schedule write for %s because scheduleEnabled is not present in current device data.',
+        deviceId,
+      );
+      return false;
+    }
+
     return this.putSchedule(deviceId, { scheduleEnabled });
   }
 
@@ -250,6 +258,14 @@ export class DaikinOpenApiClient {
     deviceId: string,
     update: DaikinFanUpdate,
   ): Promise<boolean> {
+    if (!this.hasFanCirculationData(deviceId)) {
+      this.log.warn(
+        'Skipping Daikin fan write for %s because fan circulation is not present in current device data.',
+        deviceId,
+      );
+      return false;
+    }
+
     return this.putFan(deviceId, {
       fanCirculate: update.fanCirculate,
       fanCirculateSpeed: update.fanCirculateSpeed ?? this.getFanCirculateSpeed(deviceId),

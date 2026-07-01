@@ -93,6 +93,13 @@ export interface DaikinScheduleUpdate {
   scheduleEnabled: boolean;
 }
 
+export interface AccessoryCapabilities {
+  circulationFan?: boolean;
+  outdoorUnit?: boolean;
+  schedule?: boolean;
+}
+
 export interface AccessoryContext {
+  capabilities?: AccessoryCapabilities;
   device: DaikinDevice;
 }

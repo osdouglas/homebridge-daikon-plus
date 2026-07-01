@@ -114,9 +114,18 @@ export class DaikinCirculationFanAccessory {
   }
 
   private async setRotationSpeed(value: CharacteristicValue): Promise<void> {
+    const rotationSpeed = Number(value);
+    if (rotationSpeed <= 0) {
+      await this.platform.client.setFanCirculation(this.deviceId, {
+        fanCirculate: FanCirculateMode.OFF,
+        fanCirculateSpeed: this.currentSpeed(),
+      });
+      return;
+    }
+
     await this.platform.client.setFanCirculation(this.deviceId, {
       fanCirculate: this.activeCirculationMode(),
-      fanCirculateSpeed: this.rotationSpeedToSpeed(Number(value)),
+      fanCirculateSpeed: this.rotationSpeedToSpeed(rotationSpeed),
     });
   }
 

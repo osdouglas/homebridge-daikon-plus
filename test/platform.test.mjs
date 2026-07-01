@@ -62,7 +62,60 @@ test('registers optional outdoor unit and circulation fan accessories from refre
     api.registered.map(accessory => accessory.UUID),
     ['uuid:zone-1:thermostat', 'uuid:zone-1:outdoor-unit', 'uuid:zone-1:circulation-fan'],
   );
+  assert.deepEqual(api.registered[0].context.capabilities, {
+    circulationFan: true,
+    outdoorUnit: true,
+    schedule: true,
+  });
   assert.deepEqual(api.unregistered, [staleAccessory]);
+});
+
+test('keeps cached optional HomeKit surfaces when current device data omits optional fields', async () => {
+  const api = fakeApi();
+  const log = fakeLog();
+
+  const platform = new DaikinOpenApiPlatform(log, {
+    platform: 'DaikonPlus',
+    apiKey: 'api-key',
+    integratorEmail: 'owner@example.com',
+    integratorToken: 'token',
+  }, api);
+
+  const thermostat = new api.platformAccessory('Downstairs Thermostat', 'uuid:zone-1:thermostat');
+  thermostat.context = { device: { id: 'zone-1', name: 'Downstairs' } };
+  thermostat.addService(api.hap.Service.Switch, 'Schedule', 'schedule');
+
+  const outdoorUnit = new api.platformAccessory('Downstairs Outdoor Unit', 'uuid:zone-1:outdoor-unit');
+  outdoorUnit.context = { device: { id: 'zone-1', name: 'Downstairs' } };
+
+  const circulationFan = new api.platformAccessory('Downstairs Circulation Fan', 'uuid:zone-1:circulation-fan');
+  circulationFan.context = { device: { id: 'zone-1', name: 'Downstairs' } };
+
+  const staleAccessory = new api.platformAccessory('Stale', 'uuid:stale');
+  platform.configureAccessory(thermostat);
+  platform.configureAccessory(outdoorUnit);
+  platform.configureAccessory(circulationFan);
+  platform.configureAccessory(staleAccessory);
+
+  const client = platform.client;
+  client.initialize = async () => {};
+  client.getDeviceList = () => [{ id: 'zone-1', name: 'Downstairs' }];
+  client.hasOutdoorData = () => false;
+  client.hasFanCirculationData = () => false;
+  client.hasScheduleData = () => false;
+  client.getSupportedModes = () => [0, 1, 2, 3];
+  client.addListener = () => {};
+
+  await platform.discover();
+
+  assert.deepEqual(api.registered, []);
+  assert.deepEqual(api.unregistered, [staleAccessory]);
+  assert.deepEqual(thermostat.context.capabilities, {
+    circulationFan: true,
+    outdoorUnit: true,
+    schedule: true,
+  });
+  assert.ok(thermostat.getServiceById(api.hap.Service.Switch, 'schedule'));
 });
 
 function fakeApi() {

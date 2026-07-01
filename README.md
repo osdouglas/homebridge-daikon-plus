@@ -58,9 +58,10 @@ Optional settings:
 ## Runtime Behavior
 
 - Each thermostat returned by `GET /v1/devices` is exposed as a HomeKit thermostat.
-- If outdoor readings are present, the thermostat also gets a separate HomeKit Outdoor Unit accessory with temperature and humidity sensors.
-- If circulation fan fields are present, the thermostat also gets a separate HomeKit Circulation Fan accessory.
-- The thermostat accessory includes a Schedule switch when `scheduleEnabled` is present.
+- If outdoor readings are discovered, the thermostat also gets a separate HomeKit Outdoor Unit accessory with temperature and humidity sensors.
+- If circulation fan fields are discovered, the thermostat also gets a separate HomeKit Circulation Fan accessory.
+- The thermostat accessory includes a Schedule switch when `scheduleEnabled` is discovered.
+- Optional HomeKit accessories and services are sticky once discovered. Transiently missing optional Daikin fields do not remove HomeKit surfaces, but writes that depend on currently missing fields are skipped with a warning.
 - HomeKit temperatures are Celsius; Daikin Open API temperatures are treated as Celsius.
 - Writes use `PUT /v1/devices/{deviceId}/msp` with `mode`, `heatSetpoint`, and `coolSetpoint`.
 - Schedule writes use `PUT /v1/devices/{deviceId}/schedule`.

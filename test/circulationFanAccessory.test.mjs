@@ -58,6 +58,28 @@ test('maps HomeKit rotation speed bands back to Daikin fan speeds', async () => 
   assert.deepEqual(client.fanWrites.map(write => write.update.fanCirculateSpeed), [0, 1, 2]);
 });
 
+test('turns circulation fan off when HomeKit writes zero rotation speed', async () => {
+  const { accessory, client, characteristic } = fixture({
+    fanCirculate: 1,
+    fanCirculateSpeed: 2,
+  });
+
+  new DaikinCirculationFanAccessory(platform(client, characteristic), accessory, 'zone-1');
+  const rotationSpeed = accessory.getService('Fanv2').getCharacteristic(characteristic.RotationSpeed);
+
+  await rotationSpeed.set(0);
+
+  assert.deepEqual(client.fanWrites, [
+    {
+      deviceId: 'zone-1',
+      update: {
+        fanCirculate: 0,
+        fanCirculateSpeed: 2,
+      },
+    },
+  ]);
+});
+
 function fixture({ fanCirculate, fanCirculateSpeed }) {
   const characteristic = fakeCharacteristic();
   const client = {

@@ -88,7 +88,7 @@ export class DaikinThermostatAccessory {
       .getCharacteristic(platform.Characteristic.TemperatureDisplayUnits)
       .updateValue(platform.Characteristic.TemperatureDisplayUnits.CELSIUS);
 
-    if (this.platform.client.hasScheduleData(this.deviceId)) {
+    if (accessory.context.capabilities?.schedule) {
       this.scheduleService =
         accessory.getServiceById(platform.Service.Switch, 'schedule') ??
         accessory.addService(platform.Service.Switch, 'Schedule', 'schedule');

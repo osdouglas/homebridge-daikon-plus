@@ -219,6 +219,37 @@ test('writes circulation fan payloads to the Daikin fan endpoint', async () => {
   assert.equal(client.getDevice('zone-1').data.fanCirculateSpeed, 2);
 });
 
+test('skips schedule and fan writes when current device data does not expose those fields', async () => {
+  const { calls, installFetch } = fetchQueue([
+    jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
+    jsonResponse([
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ]),
+    jsonResponse({
+      equipmentStatus: 5,
+      mode: 1,
+      heatSetpoint: 20,
+      coolSetpoint: 24,
+      tempIndoor: 21,
+    }),
+  ]);
+  installFetch();
+
+  const client = new DaikinOpenApiClient(config(), log());
+
+  await client.initialize();
+
+  assert.equal(await client.setScheduleEnabled('zone-1', false), false);
+  assert.equal(await client.setFanCirculation('zone-1', {
+    fanCirculate: 1,
+    fanCirculateSpeed: 2,
+  }), false);
+  assert.equal(calls.length, 3);
+});
+
 test('blocks unsupported mode writes before calling the Daikin msp endpoint', async () => {
   const { calls, installFetch } = fetchQueue([
     jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
