@@ -366,7 +366,7 @@ export class DaikinOpenApiClient {
         body: JSON.stringify(update),
       });
 
-      this.updateDeviceData(deviceId, update);
+      this.updateDeviceData(deviceId, this.localUpdateForEndpoint(endpoint, update));
       this.notify(deviceId);
       this.noPollBeforeMs = this.monotonicMs() + WRITE_DELAY_MS;
       this.scheduleRefresh(WRITE_DELAY_MS);
@@ -391,6 +391,19 @@ export class DaikinOpenApiClient {
       ...(device.data ?? {}),
       ...update,
     } as DaikinThermostatData;
+  }
+
+  private localUpdateForEndpoint(
+    endpoint: DaikinWriteEndpoint,
+    update: DaikinWriteUpdate,
+  ): DaikinWriteUpdate | Partial<DaikinThermostatData> {
+    if (endpoint === 'msp') {
+      return {
+        ...update,
+        scheduleEnabled: false,
+      };
+    }
+    return update;
   }
 
   private async authorizedGet<T>(url: string): Promise<T> {

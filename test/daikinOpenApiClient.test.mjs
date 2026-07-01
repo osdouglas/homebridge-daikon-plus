@@ -90,6 +90,7 @@ test('writes msp payloads with Daikin auto-mode setpoint separation', async () =
       setpointMinimum: 10,
       setpointMaximum: 35,
       tempIndoor: 21,
+      scheduleEnabled: true,
     }),
     emptyResponse(),
   ]);
@@ -111,6 +112,7 @@ test('writes msp payloads with Daikin auto-mode setpoint separation', async () =
   });
   assert.equal(client.getHeatingThreshold('zone-1'), 18.5);
   assert.equal(client.getCoolingThreshold('zone-1'), 20.5);
+  assert.equal(client.getScheduleEnabled('zone-1'), false);
 });
 
 test('readonly mode skips writes without calling the Open API', async () => {
