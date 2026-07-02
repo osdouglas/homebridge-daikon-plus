@@ -205,6 +205,8 @@ export class DaikinThermostatAccessory {
   }
 
   private async setTargetHeatingCoolingState(value: CharacteristicValue): Promise<void> {
+    this.assertOnline();
+
     let mode = ThermostatMode.OFF;
 
     switch (value) {

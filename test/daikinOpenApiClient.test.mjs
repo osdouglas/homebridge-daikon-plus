@@ -485,6 +485,41 @@ test('marks devices offline for Daikin DeviceOfflineException and recovers on re
   assert.equal(client.getCurrentTemperature('zone-1'), 21);
 });
 
+test('marks devices offline when a Daikin write returns DeviceOfflineException', async () => {
+  const { installFetch } = fetchQueue([
+    jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
+    jsonResponse([
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ]),
+    jsonResponse({
+      equipmentStatus: 5,
+      mode: 1,
+      heatSetpoint: 20,
+      coolSetpoint: 24,
+      tempIndoor: 21,
+    }),
+    response({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      body: JSON.stringify({ message: 'DeviceOfflineException' }),
+    }),
+  ]);
+  installFetch();
+
+  const client = new DaikinOpenApiClient(config(), log());
+
+  await client.initialize();
+  const didWrite = await client.setTargetTemperature('zone-1', 22);
+
+  assert.equal(didWrite, false);
+  assert.equal(client.isDeviceOnline('zone-1'), false);
+  assert.equal(client.getTargetTemperature('zone-1'), 20);
+});
+
 test('refreshes expired access tokens before writes', async () => {
   const { calls, installFetch } = fetchQueue([
     jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
