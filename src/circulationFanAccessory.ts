@@ -1,4 +1,4 @@
-import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
+import { HAPStatus, type CharacteristicValue, type PlatformAccessory, type Service } from 'homebridge';
 
 import type { DaikinOpenApiPlatform } from './platform.js';
 import { EquipmentStatus, FanCirculateMode, FanCirculateSpeed, type AccessoryContext } from './types.js';
@@ -22,17 +22,20 @@ export class DaikinCirculationFanAccessory {
 
     this.service = accessory.getService(platform.Service.Fanv2) ?? accessory.addService(platform.Service.Fanv2);
     this.service.setCharacteristic(platform.Characteristic.Name, accessory.displayName);
+    this.service.getCharacteristic(platform.Characteristic.StatusFault).onGet(() => this.getStatusFault());
 
     this.service
       .getCharacteristic(platform.Characteristic.Active)
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         return this.getActive();
       })
       .onSet(this.setActive.bind(this));
 
     this.service.getCharacteristic(platform.Characteristic.CurrentFanState).onGet(() => {
       this.platform.client.requestRefreshNow();
+      this.assertOnline();
       return this.getCurrentFanState();
     });
 
@@ -40,6 +43,7 @@ export class DaikinCirculationFanAccessory {
       .getCharacteristic(platform.Characteristic.TargetFanState)
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         return this.getTargetFanState();
       })
       .onSet(this.setTargetFanState.bind(this));
@@ -49,16 +53,19 @@ export class DaikinCirculationFanAccessory {
       .setProps({ minValue: 0, maxValue: 100, minStep: 1 })
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         return this.getRotationSpeed();
       })
       .onSet(this.setRotationSpeed.bind(this));
 
+    this.updateFaultStatus();
     this.platform.client.addListener(this.deviceId, this.updateValues.bind(this));
   }
 
   private updateValues(): void {
     const characteristic = this.platform.Characteristic;
 
+    this.updateFaultStatus();
     this.service.updateCharacteristic(characteristic.Active, this.getActive());
     this.service.updateCharacteristic(characteristic.CurrentFanState, this.getCurrentFanState());
     this.service.updateCharacteristic(characteristic.TargetFanState, this.getTargetFanState());
@@ -72,6 +79,7 @@ export class DaikinCirculationFanAccessory {
   }
 
   private async setActive(value: CharacteristicValue): Promise<void> {
+    this.assertOnline();
     const active = Number(value) === this.platform.Characteristic.Active.ACTIVE;
     await this.platform.client.setFanCirculation(this.deviceId, {
       fanCirculate: active ? this.activeCirculationMode({ preferManual: true }) : FanCirculateMode.OFF,
@@ -96,6 +104,7 @@ export class DaikinCirculationFanAccessory {
   }
 
   private async setTargetFanState(value: CharacteristicValue): Promise<void> {
+    this.assertOnline();
     const fanCirculate =
       Number(value) === this.platform.Characteristic.TargetFanState.AUTO
         ? FanCirculateMode.SCHEDULE
@@ -114,6 +123,7 @@ export class DaikinCirculationFanAccessory {
   }
 
   private async setRotationSpeed(value: CharacteristicValue): Promise<void> {
+    this.assertOnline();
     const rotationSpeed = Number(value);
     if (rotationSpeed <= 0) {
       await this.platform.client.setFanCirculation(this.deviceId, {
@@ -166,6 +176,22 @@ export class DaikinCirculationFanAccessory {
         return 100;
       default:
         return 0;
+    }
+  }
+
+  private updateFaultStatus(): void {
+    this.service.updateCharacteristic(this.platform.Characteristic.StatusFault, this.getStatusFault());
+  }
+
+  private getStatusFault(): CharacteristicValue {
+    return this.platform.client.isDeviceOnline(this.deviceId)
+      ? this.platform.Characteristic.StatusFault.NO_FAULT
+      : this.platform.Characteristic.StatusFault.GENERAL_FAULT;
+  }
+
+  private assertOnline(): void {
+    if (!this.platform.client.isDeviceOnline(this.deviceId)) {
+      throw HAPStatus.SERVICE_COMMUNICATION_FAILURE;
     }
   }
 }

@@ -49,6 +49,7 @@ test('registers optional outdoor unit and circulation fan accessories from refre
   client.hasOutdoorData = () => true;
   client.hasFanCirculationData = () => true;
   client.hasScheduleData = () => true;
+  client.isDeviceOnline = () => true;
   client.getSupportedModes = () => [0, 1, 2, 3];
   client.addListener = () => {};
 
@@ -67,6 +68,10 @@ test('registers optional outdoor unit and circulation fan accessories from refre
     outdoorUnit: true,
     schedule: true,
   });
+  assert.equal(
+    api.registered[0].getServiceById(api.hap.Service.Switch, 'schedule').displayName,
+    'Schedule',
+  );
   assert.deepEqual(api.unregistered, [staleAccessory]);
 });
 
@@ -103,6 +108,7 @@ test('keeps cached optional HomeKit surfaces when current device data omits opti
   client.hasOutdoorData = () => false;
   client.hasFanCirculationData = () => false;
   client.hasScheduleData = () => false;
+  client.isDeviceOnline = () => true;
   client.getSupportedModes = () => [0, 1, 2, 3];
   client.addListener = () => {};
 
@@ -241,6 +247,7 @@ function fakeCharacteristic() {
     On: 'On',
     RotationSpeed: 'RotationSpeed',
     SerialNumber: 'SerialNumber',
+    StatusFault: { GENERAL_FAULT: 1, NO_FAULT: 0 },
     TargetFanState: { AUTO: 1, MANUAL: 0 },
     TargetHeatingCoolingState: { AUTO: 3, COOL: 2, HEAT: 1, OFF: 0 },
     TargetTemperature: 'TargetTemperature',

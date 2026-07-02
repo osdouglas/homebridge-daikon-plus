@@ -1,7 +1,9 @@
-import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
+import { HAPStatus, type CharacteristicValue, type PlatformAccessory, type Service } from 'homebridge';
 
 import type { DaikinOpenApiPlatform } from './platform.js';
 import { EquipmentStatus, ThermostatMode, type AccessoryContext } from './types.js';
+
+const SCHEDULE_SERVICE_NAME = 'Schedule';
 
 export class DaikinThermostatAccessory {
   private readonly service: Service;
@@ -24,9 +26,11 @@ export class DaikinThermostatAccessory {
     this.service = accessory.getService(platform.Service.Thermostat) ?? accessory.addService(platform.Service.Thermostat);
     this.service.setCharacteristic(platform.Characteristic.Name, accessory.displayName);
     this.service.getCharacteristic(platform.Characteristic.TargetHeatingCoolingState).setProps(this.targetHeatingCoolingStateProps());
+    this.service.getCharacteristic(platform.Characteristic.StatusFault).onGet(() => this.getStatusFault());
 
     this.service.getCharacteristic(platform.Characteristic.CurrentHeatingCoolingState).onGet(() => {
       this.platform.client.requestRefreshNow();
+      this.assertOnline();
       return this.getCurrentHeatingCoolingState();
     });
 
@@ -34,12 +38,14 @@ export class DaikinThermostatAccessory {
       .getCharacteristic(platform.Characteristic.TargetHeatingCoolingState)
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         return this.getTargetHeatingCoolingState();
       })
       .onSet(this.setTargetHeatingCoolingState.bind(this));
 
     this.service.getCharacteristic(platform.Characteristic.CurrentTemperature).onGet(() => {
       this.platform.client.requestRefreshNow();
+      this.assertOnline();
       return this.clamp(this.platform.client.getCurrentTemperature(this.deviceId), -270, 100);
     });
 
@@ -48,10 +54,12 @@ export class DaikinThermostatAccessory {
       .setProps(this.temperatureProps())
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         const props = this.temperatureProps();
         return this.clamp(this.platform.client.getTargetTemperature(this.deviceId), props.minValue, props.maxValue);
       })
       .onSet(async value => {
+        this.assertOnline();
         await this.platform.client.setTargetTemperature(this.deviceId, Number(value));
       });
 
@@ -60,10 +68,12 @@ export class DaikinThermostatAccessory {
       .setProps(this.heatingThresholdProps())
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         const props = this.heatingThresholdProps();
         return this.clamp(this.platform.client.getHeatingThreshold(this.deviceId), props.minValue, props.maxValue);
       })
       .onSet(async value => {
+        this.assertOnline();
         await this.platform.client.setThresholds(this.deviceId, Number(value), undefined);
       });
 
@@ -72,15 +82,18 @@ export class DaikinThermostatAccessory {
       .setProps(this.coolingThresholdProps())
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         const props = this.coolingThresholdProps();
         return this.clamp(this.platform.client.getCoolingThreshold(this.deviceId), props.minValue, props.maxValue);
       })
       .onSet(async value => {
+        this.assertOnline();
         await this.platform.client.setThresholds(this.deviceId, undefined, Number(value));
       });
 
     this.service.getCharacteristic(platform.Characteristic.CurrentRelativeHumidity).onGet(() => {
       this.platform.client.requestRefreshNow();
+      this.assertOnline();
       return this.clamp(this.platform.client.getCurrentHumidity(this.deviceId), 0, 100);
     });
 
@@ -91,19 +104,23 @@ export class DaikinThermostatAccessory {
     if (accessory.context.capabilities?.schedule) {
       this.scheduleService =
         accessory.getServiceById(platform.Service.Switch, 'schedule') ??
-        accessory.addService(platform.Service.Switch, 'Schedule', 'schedule');
-      this.scheduleService.setCharacteristic(platform.Characteristic.Name, 'Schedule');
+        accessory.addService(platform.Service.Switch, SCHEDULE_SERVICE_NAME, 'schedule');
+      this.scheduleService.setCharacteristic(platform.Characteristic.Name, SCHEDULE_SERVICE_NAME);
+      this.scheduleService.getCharacteristic(platform.Characteristic.StatusFault).onGet(() => this.getStatusFault());
       this.scheduleService
         .getCharacteristic(platform.Characteristic.On)
         .onGet(() => {
           this.platform.client.requestRefreshNow();
+          this.assertOnline();
           return this.platform.client.getScheduleEnabled(this.deviceId);
         })
         .onSet(async value => {
+          this.assertOnline();
           await this.platform.client.setScheduleEnabled(this.deviceId, Boolean(value));
         });
     }
 
+    this.updateFaultStatus();
     this.platform.client.addListener(this.deviceId, this.updateValues.bind(this));
   }
 
@@ -113,6 +130,7 @@ export class DaikinThermostatAccessory {
     const heatingProps = this.heatingThresholdProps();
     const coolingProps = this.coolingThresholdProps();
 
+    this.updateFaultStatus();
     this.service.getCharacteristic(characteristic.TargetHeatingCoolingState).setProps(this.targetHeatingCoolingStateProps());
     this.service.getCharacteristic(characteristic.TargetTemperature).setProps(temperatureProps);
     this.service.getCharacteristic(characteristic.HeatingThresholdTemperature).setProps(heatingProps);
@@ -140,6 +158,24 @@ export class DaikinThermostatAccessory {
       this.clamp(this.platform.client.getCurrentHumidity(this.deviceId), 0, 100),
     );
     this.scheduleService?.updateCharacteristic(characteristic.On, this.platform.client.getScheduleEnabled(this.deviceId));
+  }
+
+  private updateFaultStatus(): void {
+    const statusFault = this.getStatusFault();
+    this.service.updateCharacteristic(this.platform.Characteristic.StatusFault, statusFault);
+    this.scheduleService?.updateCharacteristic(this.platform.Characteristic.StatusFault, statusFault);
+  }
+
+  private getStatusFault(): CharacteristicValue {
+    return this.platform.client.isDeviceOnline(this.deviceId)
+      ? this.platform.Characteristic.StatusFault.NO_FAULT
+      : this.platform.Characteristic.StatusFault.GENERAL_FAULT;
+  }
+
+  private assertOnline(): void {
+    if (!this.platform.client.isDeviceOnline(this.deviceId)) {
+      throw HAPStatus.SERVICE_COMMUNICATION_FAILURE;
+    }
   }
 
   private getCurrentHeatingCoolingState(): CharacteristicValue {

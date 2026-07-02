@@ -2,53 +2,46 @@ import { hrtime } from 'node:process';
 
 import type { Logging } from 'homebridge';
 
-import { normalizeMode, parseThermostatPayload, type ThermostatPayloadValidation } from './daikinOpenApiMapper.js';
-import { FetchJsonHttpClient, type JsonHttpClient } from './httpClient.js';
+import { normalizeMode, parseThermostatPayload } from './daikinOpenApiMapper.js';
+import { DaikinOpenApiGateway, type DaikinWriteEndpoint, type DaikinWriteUpdate } from './daikinOpenApiGateway.js';
+import { DaikinPayloadDiagnostics } from './daikinPayloadDiagnostics.js';
+import { FetchJsonHttpClient, JsonHttpError, type JsonHttpClient } from './httpClient.js';
 import { applySetpointPolicy } from './setpointPolicy.js';
 import { EquipmentStatus, FanCirculateMode, FanCirculateSpeed, ModeLimit, ThermostatMode } from './types.js';
 import type {
   DaikinFanUpdate,
   DaikinDevice,
-  DaikinLocation,
   DaikinPlatformConfig,
   DaikinScheduleUpdate,
   DaikinThermostatData,
   DaikinThermostatUpdate,
 } from './types.js';
 
-interface DaikinTokenResponse {
-  accessToken: string;
-  accessTokenExpiresIn: number;
-}
-
 type DataChanged = () => void;
-type DaikinWriteEndpoint = 'msp' | 'schedule' | 'fan';
-type DaikinWriteUpdate = DaikinFanUpdate | DaikinScheduleUpdate | DaikinThermostatUpdate;
 
-const DAIKIN_ONE_BASE_URI = 'https://integrator-api.daikinskyport.com';
-const TOKEN_URL = `${DAIKIN_ONE_BASE_URI}/v1/token`;
-const DEVICES_URL = `${DAIKIN_ONE_BASE_URI}/v1/devices`;
 const WRITE_DELAY_MS = 15_000;
 const UNKNOWN_TEMPERATURE = -270;
+const DEVICE_OFFLINE_MESSAGE = 'DeviceOfflineException';
 
 export class DaikinOpenApiClient {
-  private token?: DaikinTokenResponse;
-  private tokenExpiresAtMs = 0;
   private devices = new Map<string, DaikinDevice>();
+  private offlineDeviceIds = new Set<string>();
   private listeners = new Map<string, Set<DataChanged>>();
   private refreshTimer?: NodeJS.Timeout;
   private initialized = false;
   private readonly pollIntervalMs: number;
   private noPollBeforeMs = 0;
-  private readonly lastPayloadWarningKeys = new Map<string, string>();
-  private readonly lastDeveloperNoteKeys = new Map<string, string>();
+  private readonly gateway: DaikinOpenApiGateway;
+  private readonly diagnostics: DaikinPayloadDiagnostics;
 
   public constructor(
     private readonly config: DaikinPlatformConfig,
     private readonly log: Logging,
-    private readonly http: JsonHttpClient = new FetchJsonHttpClient(config.requestTimeoutSeconds),
+    http: JsonHttpClient = new FetchJsonHttpClient(config.requestTimeoutSeconds),
   ) {
     this.pollIntervalMs = Math.max(180, config.pollIntervalSeconds) * 1000;
+    this.gateway = new DaikinOpenApiGateway(config, log, http);
+    this.diagnostics = new DaikinPayloadDiagnostics(log, config.developerMode);
   }
 
   public isInitialized(): boolean {
@@ -61,6 +54,10 @@ export class DaikinOpenApiClient {
 
   public getDevice(deviceId: string): DaikinDevice | undefined {
     return this.devices.get(deviceId);
+  }
+
+  public isDeviceOnline(deviceId: string): boolean {
+    return !this.offlineDeviceIds.has(deviceId);
   }
 
   public addListener(deviceId: string, listener: DataChanged): void {
@@ -77,7 +74,7 @@ export class DaikinOpenApiClient {
   }
 
   public async initialize(): Promise<void> {
-    await this.authenticate();
+    await this.gateway.authenticate();
     await this.discoverDevices();
     await this.refreshAllDevices();
     this.initialized = this.devices.size > 0;
@@ -274,23 +271,8 @@ export class DaikinOpenApiClient {
     });
   }
 
-  private async authenticate(): Promise<void> {
-    this.debug('Authenticating with Daikin One Open API.');
-    const response = await this.fetchJson<DaikinTokenResponse>(TOKEN_URL, {
-      method: 'POST',
-      headers: this.baseHeaders(),
-      body: JSON.stringify({
-        email: this.config.integratorEmail,
-        integratorToken: this.config.integratorToken,
-      }),
-    });
-
-    this.token = response;
-    this.tokenExpiresAtMs = Date.now() + response.accessTokenExpiresIn * 1000 - 60_000;
-  }
-
   private async discoverDevices(): Promise<void> {
-    const locations = await this.authorizedGet<DaikinLocation[]>(DEVICES_URL);
+    const locations = await this.gateway.listDevices();
     const allowedIds = new Set(this.config.deviceIds);
     const nextDevices = new Map<string, DaikinDevice>();
 
@@ -313,18 +295,19 @@ export class DaikinOpenApiClient {
   }
 
   private async refreshAllDevices(): Promise<void> {
-    await this.ensureToken();
     for (const device of this.devices.values()) {
       try {
-        const payload = await this.authorizedGet<Record<string, unknown>>(`${DEVICES_URL}/${device.id}`);
-        if (this.config.developerMode) {
-          this.log.info('Raw Daikin payload for %s: %s', device.id, JSON.stringify(payload));
-        }
+        const payload = await this.gateway.getDevicePayload(device.id);
+        this.diagnostics.logRawPayload(device.id, payload);
         const parsedPayload = parseThermostatPayload(payload);
-        this.logPayloadValidation(device.id, parsedPayload);
+        this.diagnostics.logValidation(device.id, parsedPayload);
         this.updateDeviceData(device.id, parsedPayload.data);
+        this.setDeviceOnline(device.id);
         this.notify(device.id);
       } catch (error) {
+        if (this.setDeviceOfflineFromError(device.id, error)) {
+          this.notify(device.id);
+        }
         this.logError(`Unable to refresh ${device.name} (${device.id}).`, error);
       }
     }
@@ -360,22 +343,21 @@ export class DaikinOpenApiClient {
     }
 
     try {
-      await this.ensureToken();
       if (this.config.developerMode) {
         this.log.info('%s for %s: %s', payloadLabel, deviceId, JSON.stringify(update));
       }
-      await this.fetchJson<unknown>(`${DEVICES_URL}/${deviceId}/${endpoint}`, {
-        method: 'PUT',
-        headers: this.authorizedHeaders(),
-        body: JSON.stringify(update),
-      });
+      await this.gateway.putDeviceUpdate(deviceId, endpoint, update);
 
       this.updateDeviceData(deviceId, this.localUpdateForEndpoint(endpoint, update));
+      this.setDeviceOnline(deviceId);
       this.notify(deviceId);
       this.noPollBeforeMs = this.monotonicMs() + WRITE_DELAY_MS;
       this.scheduleRefresh(WRITE_DELAY_MS);
       return true;
     } catch (error) {
+      if (this.setDeviceOfflineFromError(deviceId, error)) {
+        this.notify(deviceId);
+      }
       this.logError(`Unable to complete ${writeLabel} for ${deviceId}.`, error);
       return false;
     }
@@ -410,40 +392,18 @@ export class DaikinOpenApiClient {
     return update;
   }
 
-  private async authorizedGet<T>(url: string): Promise<T> {
-    await this.ensureToken();
-    return this.fetchJson<T>(url, {
-      headers: this.authorizedHeaders(),
-    });
+  private setDeviceOnline(deviceId: string): boolean {
+    return this.offlineDeviceIds.delete(deviceId);
   }
 
-  private async ensureToken(): Promise<void> {
-    if (!this.token || Date.now() >= this.tokenExpiresAtMs) {
-      await this.authenticate();
-    }
-  }
-
-  private async fetchJson<T>(url: string, init: RequestInit): Promise<T> {
-    return this.http.fetchJson<T>(url, init);
-  }
-
-  private baseHeaders(): Record<string, string> {
-    return {
-      'x-api-key': this.config.apiKey,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    };
-  }
-
-  private authorizedHeaders(): Record<string, string> {
-    if (!this.token) {
-      throw new Error('No Daikin Open API token is available.');
+  private setDeviceOfflineFromError(deviceId: string, error: unknown): boolean {
+    if (!(error instanceof JsonHttpError && error.responseMessage === DEVICE_OFFLINE_MESSAGE)) {
+      return false;
     }
 
-    return {
-      ...this.baseHeaders(),
-      Authorization: `Bearer ${this.token.accessToken}`,
-    };
+    const wasOnline = this.isDeviceOnline(deviceId);
+    this.offlineDeviceIds.add(deviceId);
+    return wasOnline;
   }
 
   private scheduleRefresh(delayMs: number): void {
@@ -487,47 +447,6 @@ export class DaikinOpenApiClient {
 
     const mappedMode = data.mode === ThermostatMode.EMERGENCY_HEAT ? ThermostatMode.HEAT : data.mode;
     return [...new Set([ThermostatMode.OFF, mappedMode])];
-  }
-
-  private debug(message: string, ...parameters: unknown[]): void {
-    if (this.config.developerMode) {
-      this.log.info(message, ...parameters);
-    }
-  }
-
-  private logPayloadValidation(
-    deviceId: string,
-    validation: ThermostatPayloadValidation,
-  ): void {
-    this.logChangedPayloadWarnings(deviceId, validation.warnings);
-
-    if (this.config.developerMode) {
-      this.logChangedDeveloperNotes(deviceId, validation.developerNotes);
-    }
-  }
-
-  private logChangedPayloadWarnings(deviceId: string, warnings: string[]): void {
-    const warningKey = warnings.join('; ');
-    if (this.lastPayloadWarningKeys.get(deviceId) === warningKey) {
-      return;
-    }
-
-    this.lastPayloadWarningKeys.set(deviceId, warningKey);
-    if (warnings.length > 0) {
-      this.log.warn('Daikin payload validation warning for %s: %s.', deviceId, warningKey);
-    }
-  }
-
-  private logChangedDeveloperNotes(deviceId: string, developerNotes: string[]): void {
-    const noteKey = developerNotes.join('; ');
-    if (this.lastDeveloperNoteKeys.get(deviceId) === noteKey) {
-      return;
-    }
-
-    this.lastDeveloperNoteKeys.set(deviceId, noteKey);
-    if (developerNotes.length > 0) {
-      this.log.info('Daikin payload developer note for %s: %s.', deviceId, noteKey);
-    }
   }
 
   private logError(message: string, error: unknown): void {

@@ -102,12 +102,30 @@ test('turns circulation fan off when HomeKit writes zero rotation speed', async 
   ]);
 });
 
+test('reports HomeKit communication failure while offline', async () => {
+  const { accessory, client, characteristic } = fixture({
+    fanCirculate: 1,
+    fanCirculateSpeed: 1,
+  });
+  client.online = false;
+
+  new DaikinCirculationFanAccessory(platform(client, characteristic), accessory, 'zone-1');
+  const service = accessory.getService('Fanv2');
+
+  assert.equal(await service.getCharacteristic(characteristic.StatusFault).get(), characteristic.StatusFault.GENERAL_FAULT);
+  await assert.rejects(
+    service.getCharacteristic(characteristic.Active).get(),
+    error => error === -70402,
+  );
+});
+
 function fixture({ fanCirculate, fanCirculateSpeed }) {
   const characteristic = fakeCharacteristic();
   const client = {
     fanCirculate,
     fanCirculateSpeed,
     fanWrites: [],
+    online: true,
     addListener() {},
     getCurrentStatus() {
       return 5;
@@ -117,6 +135,9 @@ function fixture({ fanCirculate, fanCirculateSpeed }) {
     },
     getFanCirculateSpeed() {
       return this.fanCirculateSpeed;
+    },
+    isDeviceOnline() {
+      return this.online;
     },
     requestRefreshNow() {},
     async setFanCirculation(deviceId, update) {
@@ -182,6 +203,10 @@ class FakeService {
   setCharacteristic() {
     return this;
   }
+
+  updateCharacteristic() {
+    return this;
+  }
 }
 
 class FakeCharacteristicValue {
@@ -226,6 +251,7 @@ function fakeCharacteristic() {
     Name: 'Name',
     RotationSpeed: 'RotationSpeed',
     SerialNumber: 'SerialNumber',
+    StatusFault: { GENERAL_FAULT: 1, NO_FAULT: 0 },
     TargetFanState: { AUTO: 1, MANUAL: 0 },
   };
 }
