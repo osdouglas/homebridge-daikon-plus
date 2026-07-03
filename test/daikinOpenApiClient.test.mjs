@@ -445,6 +445,81 @@ test('logs unknown payload fields as developer notes only in developer mode', as
   assert.equal(infos.some(message => message.includes('Daikin payload developer note')), true);
 });
 
+test('marks devices offline for Daikin DeviceOfflineException and recovers on refresh', async () => {
+  const errors = [];
+  const { installFetch } = fetchQueue([
+    jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
+    jsonResponse([
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ]),
+    response({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      body: JSON.stringify({ message: 'DeviceOfflineException' }),
+    }),
+    jsonResponse({
+      equipmentStatus: 5,
+      mode: 1,
+      heatSetpoint: 20,
+      coolSetpoint: 24,
+      tempIndoor: 21,
+    }),
+  ]);
+  installFetch();
+
+  const client = new DaikinOpenApiClient(config(), log({ errors }));
+
+  await client.initialize();
+
+  assert.equal(client.isDeviceOnline('zone-1'), false);
+  assert.equal(client.getDevice('zone-1').data, undefined);
+  assert.equal(errors.some(message => message.includes('DeviceOfflineException')), true);
+
+  await client.refreshAllDevices();
+
+  assert.equal(client.isDeviceOnline('zone-1'), true);
+  assert.equal(client.getCurrentTemperature('zone-1'), 21);
+});
+
+test('marks devices offline when a Daikin write returns DeviceOfflineException', async () => {
+  const { installFetch } = fetchQueue([
+    jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
+    jsonResponse([
+      {
+        locationName: 'Home',
+        devices: [{ id: 'zone-1', name: 'Downstairs' }],
+      },
+    ]),
+    jsonResponse({
+      equipmentStatus: 5,
+      mode: 1,
+      heatSetpoint: 20,
+      coolSetpoint: 24,
+      tempIndoor: 21,
+    }),
+    response({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      body: JSON.stringify({ message: 'DeviceOfflineException' }),
+    }),
+  ]);
+  installFetch();
+
+  const client = new DaikinOpenApiClient(config(), log());
+
+  await client.initialize();
+  const didWrite = await client.setTargetTemperature('zone-1', 22);
+
+  assert.equal(didWrite, false);
+  assert.equal(client.isDeviceOnline('zone-1'), false);
+  assert.equal(client.getTargetTemperature('zone-1'), 20);
+});
+
 test('refreshes expired access tokens before writes', async () => {
   const { calls, installFetch } = fetchQueue([
     jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
@@ -466,21 +541,29 @@ test('refreshes expired access tokens before writes', async () => {
   ]);
   installFetch();
 
-  const client = new DaikinOpenApiClient(config(), log());
+  const originalNow = Date.now;
+  let now = 1_000_000;
+  Date.now = () => now;
 
-  await client.initialize();
-  client.tokenExpiresAtMs = 0;
-  const didWrite = await client.setTargetTemperature('zone-1', 21);
+  try {
+    const client = new DaikinOpenApiClient(config(), log());
 
-  assert.equal(didWrite, true);
-  assert.deepEqual(
-    calls.filter(call => call.url === tokenUrl).map(call => JSON.parse(call.init.body)),
-    [
-      { email: 'test@example.com', integratorToken: 'integrator-token' },
-      { email: 'test@example.com', integratorToken: 'integrator-token' },
-    ],
-  );
-  assert.equal(calls.at(-1).init.headers.Authorization, 'Bearer token-2');
+    await client.initialize();
+    now += 3_600_000;
+    const didWrite = await client.setTargetTemperature('zone-1', 21);
+
+    assert.equal(didWrite, true);
+    assert.deepEqual(
+      calls.filter(call => call.url === tokenUrl).map(call => JSON.parse(call.init.body)),
+      [
+        { email: 'test@example.com', integratorToken: 'integrator-token' },
+        { email: 'test@example.com', integratorToken: 'integrator-token' },
+      ],
+    );
+    assert.equal(calls.at(-1).init.headers.Authorization, 'Bearer token-2');
+  } finally {
+    Date.now = originalNow;
+  }
 });
 
 function config(overrides = {}) {
@@ -499,10 +582,12 @@ function config(overrides = {}) {
   };
 }
 
-function log({ infos = [], warnings = [] } = {}) {
+function log({ errors = [], infos = [], warnings = [] } = {}) {
   return {
     debug() {},
-    error() {},
+    error(message, ...parameters) {
+      errors.push([message, ...parameters].join(' '));
+    },
     info(message, ...parameters) {
       infos.push([message, ...parameters].join(' '));
     },

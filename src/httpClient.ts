@@ -2,6 +2,18 @@ export interface JsonHttpClient {
   fetchJson<T>(url: string, init: RequestInit): Promise<T>;
 }
 
+export class JsonHttpError extends Error {
+  public constructor(
+    public readonly url: string,
+    public readonly status: number,
+    public readonly statusText: string,
+    public readonly body: string,
+    public readonly responseMessage?: string,
+  ) {
+    super(`Request ${url} failed with ${status} ${statusText}: ${body}`);
+  }
+}
+
 export class FetchJsonHttpClient implements JsonHttpClient {
   private readonly timeoutMs: number;
 
@@ -29,10 +41,27 @@ export class FetchJsonHttpClient implements JsonHttpClient {
     }
 
     if (!response.ok) {
-      throw new Error(`Request ${url} failed with ${response.status} ${response.statusText}: ${await response.text()}`);
+      const body = await response.text();
+      throw new JsonHttpError(String(url), response.status, response.statusText, body, responseMessage(body));
     }
 
     const text = await response.text();
     return (text.length > 0 ? JSON.parse(text) : undefined) as T;
   }
+}
+
+function responseMessage(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as { message?: unknown; messages?: unknown };
+    if (typeof parsed.message === 'string') {
+      return parsed.message;
+    }
+    if (typeof parsed.messages === 'string') {
+      return parsed.messages;
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
 }

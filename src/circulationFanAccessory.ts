@@ -1,4 +1,4 @@
-import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
+import { HAPStatus, type CharacteristicValue, type PlatformAccessory, type Service } from 'homebridge';
 
 import type { DaikinOpenApiPlatform } from './platform.js';
 import { EquipmentStatus, FanCirculateMode, FanCirculateSpeed, type AccessoryContext } from './types.js';
@@ -27,12 +27,14 @@ export class DaikinCirculationFanAccessory {
       .getCharacteristic(platform.Characteristic.Active)
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         return this.getActive();
       })
       .onSet(this.setActive.bind(this));
 
     this.service.getCharacteristic(platform.Characteristic.CurrentFanState).onGet(() => {
       this.platform.client.requestRefreshNow();
+      this.assertOnline();
       return this.getCurrentFanState();
     });
 
@@ -40,6 +42,7 @@ export class DaikinCirculationFanAccessory {
       .getCharacteristic(platform.Characteristic.TargetFanState)
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         return this.getTargetFanState();
       })
       .onSet(this.setTargetFanState.bind(this));
@@ -49,6 +52,7 @@ export class DaikinCirculationFanAccessory {
       .setProps({ minValue: 0, maxValue: 100, minStep: 1 })
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         return this.getRotationSpeed();
       })
       .onSet(this.setRotationSpeed.bind(this));
@@ -72,11 +76,12 @@ export class DaikinCirculationFanAccessory {
   }
 
   private async setActive(value: CharacteristicValue): Promise<void> {
+    this.assertOnline();
     const active = Number(value) === this.platform.Characteristic.Active.ACTIVE;
-    await this.platform.client.setFanCirculation(this.deviceId, {
+    await this.writeOrThrow(this.platform.client.setFanCirculation(this.deviceId, {
       fanCirculate: active ? this.activeCirculationMode({ preferManual: true }) : FanCirculateMode.OFF,
       fanCirculateSpeed: this.currentSpeed(),
-    });
+    }));
   }
 
   private getCurrentFanState(): CharacteristicValue {
@@ -96,14 +101,15 @@ export class DaikinCirculationFanAccessory {
   }
 
   private async setTargetFanState(value: CharacteristicValue): Promise<void> {
+    this.assertOnline();
     const fanCirculate =
       Number(value) === this.platform.Characteristic.TargetFanState.AUTO
         ? FanCirculateMode.SCHEDULE
         : this.activeCirculationMode({ preferManual: true });
-    await this.platform.client.setFanCirculation(this.deviceId, {
+    await this.writeOrThrow(this.platform.client.setFanCirculation(this.deviceId, {
       fanCirculate,
       fanCirculateSpeed: this.currentSpeed(),
-    });
+    }));
   }
 
   private getRotationSpeed(): CharacteristicValue {
@@ -114,19 +120,20 @@ export class DaikinCirculationFanAccessory {
   }
 
   private async setRotationSpeed(value: CharacteristicValue): Promise<void> {
+    this.assertOnline();
     const rotationSpeed = Number(value);
     if (rotationSpeed <= 0) {
-      await this.platform.client.setFanCirculation(this.deviceId, {
+      await this.writeOrThrow(this.platform.client.setFanCirculation(this.deviceId, {
         fanCirculate: FanCirculateMode.OFF,
         fanCirculateSpeed: this.currentSpeed(),
-      });
+      }));
       return;
     }
 
-    await this.platform.client.setFanCirculation(this.deviceId, {
+    await this.writeOrThrow(this.platform.client.setFanCirculation(this.deviceId, {
       fanCirculate: this.activeCirculationMode({ preferManual: true }),
       fanCirculateSpeed: this.rotationSpeedToSpeed(rotationSpeed),
-    });
+    }));
   }
 
   private activeCirculationMode(options: { preferManual?: boolean } = {}): FanCirculateMode {
@@ -166,6 +173,19 @@ export class DaikinCirculationFanAccessory {
         return 100;
       default:
         return 0;
+    }
+  }
+
+  private assertOnline(): void {
+    if (!this.platform.client.isDeviceOnline(this.deviceId)) {
+      throw HAPStatus.SERVICE_COMMUNICATION_FAILURE;
+    }
+  }
+
+  private async writeOrThrow(write: Promise<boolean>): Promise<void> {
+    const didWrite = await write;
+    if (!didWrite && !this.platform.client.isDeviceOnline(this.deviceId)) {
+      throw HAPStatus.SERVICE_COMMUNICATION_FAILURE;
     }
   }
 }

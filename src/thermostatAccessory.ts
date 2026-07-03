@@ -1,7 +1,9 @@
-import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
+import { HAPStatus, type CharacteristicValue, type PlatformAccessory, type Service } from 'homebridge';
 
 import type { DaikinOpenApiPlatform } from './platform.js';
 import { EquipmentStatus, ThermostatMode, type AccessoryContext } from './types.js';
+
+const SCHEDULE_SERVICE_NAME = 'Schedule';
 
 export class DaikinThermostatAccessory {
   private readonly service: Service;
@@ -27,6 +29,7 @@ export class DaikinThermostatAccessory {
 
     this.service.getCharacteristic(platform.Characteristic.CurrentHeatingCoolingState).onGet(() => {
       this.platform.client.requestRefreshNow();
+      this.assertOnline();
       return this.getCurrentHeatingCoolingState();
     });
 
@@ -34,12 +37,14 @@ export class DaikinThermostatAccessory {
       .getCharacteristic(platform.Characteristic.TargetHeatingCoolingState)
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         return this.getTargetHeatingCoolingState();
       })
       .onSet(this.setTargetHeatingCoolingState.bind(this));
 
     this.service.getCharacteristic(platform.Characteristic.CurrentTemperature).onGet(() => {
       this.platform.client.requestRefreshNow();
+      this.assertOnline();
       return this.clamp(this.platform.client.getCurrentTemperature(this.deviceId), -270, 100);
     });
 
@@ -48,11 +53,13 @@ export class DaikinThermostatAccessory {
       .setProps(this.temperatureProps())
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         const props = this.temperatureProps();
         return this.clamp(this.platform.client.getTargetTemperature(this.deviceId), props.minValue, props.maxValue);
       })
       .onSet(async value => {
-        await this.platform.client.setTargetTemperature(this.deviceId, Number(value));
+        this.assertOnline();
+        await this.writeOrThrow(this.platform.client.setTargetTemperature(this.deviceId, Number(value)));
       });
 
     this.service
@@ -60,11 +67,13 @@ export class DaikinThermostatAccessory {
       .setProps(this.heatingThresholdProps())
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         const props = this.heatingThresholdProps();
         return this.clamp(this.platform.client.getHeatingThreshold(this.deviceId), props.minValue, props.maxValue);
       })
       .onSet(async value => {
-        await this.platform.client.setThresholds(this.deviceId, Number(value), undefined);
+        this.assertOnline();
+        await this.writeOrThrow(this.platform.client.setThresholds(this.deviceId, Number(value), undefined));
       });
 
     this.service
@@ -72,15 +81,18 @@ export class DaikinThermostatAccessory {
       .setProps(this.coolingThresholdProps())
       .onGet(() => {
         this.platform.client.requestRefreshNow();
+        this.assertOnline();
         const props = this.coolingThresholdProps();
         return this.clamp(this.platform.client.getCoolingThreshold(this.deviceId), props.minValue, props.maxValue);
       })
       .onSet(async value => {
-        await this.platform.client.setThresholds(this.deviceId, undefined, Number(value));
+        this.assertOnline();
+        await this.writeOrThrow(this.platform.client.setThresholds(this.deviceId, undefined, Number(value)));
       });
 
     this.service.getCharacteristic(platform.Characteristic.CurrentRelativeHumidity).onGet(() => {
       this.platform.client.requestRefreshNow();
+      this.assertOnline();
       return this.clamp(this.platform.client.getCurrentHumidity(this.deviceId), 0, 100);
     });
 
@@ -91,16 +103,18 @@ export class DaikinThermostatAccessory {
     if (accessory.context.capabilities?.schedule) {
       this.scheduleService =
         accessory.getServiceById(platform.Service.Switch, 'schedule') ??
-        accessory.addService(platform.Service.Switch, 'Schedule', 'schedule');
-      this.scheduleService.setCharacteristic(platform.Characteristic.Name, 'Schedule');
+        accessory.addService(platform.Service.Switch, SCHEDULE_SERVICE_NAME, 'schedule');
+      this.scheduleService.setCharacteristic(platform.Characteristic.Name, SCHEDULE_SERVICE_NAME);
       this.scheduleService
         .getCharacteristic(platform.Characteristic.On)
         .onGet(() => {
           this.platform.client.requestRefreshNow();
+          this.assertOnline();
           return this.platform.client.getScheduleEnabled(this.deviceId);
         })
         .onSet(async value => {
-          await this.platform.client.setScheduleEnabled(this.deviceId, Boolean(value));
+          this.assertOnline();
+          await this.writeOrThrow(this.platform.client.setScheduleEnabled(this.deviceId, Boolean(value)));
         });
     }
 
@@ -142,6 +156,19 @@ export class DaikinThermostatAccessory {
     this.scheduleService?.updateCharacteristic(characteristic.On, this.platform.client.getScheduleEnabled(this.deviceId));
   }
 
+  private assertOnline(): void {
+    if (!this.platform.client.isDeviceOnline(this.deviceId)) {
+      throw HAPStatus.SERVICE_COMMUNICATION_FAILURE;
+    }
+  }
+
+  private async writeOrThrow(write: Promise<boolean>): Promise<void> {
+    const didWrite = await write;
+    if (!didWrite && !this.platform.client.isDeviceOnline(this.deviceId)) {
+      throw HAPStatus.SERVICE_COMMUNICATION_FAILURE;
+    }
+  }
+
   private getCurrentHeatingCoolingState(): CharacteristicValue {
     switch (this.platform.client.getCurrentStatus(this.deviceId)) {
       case EquipmentStatus.COOLING:
@@ -169,6 +196,8 @@ export class DaikinThermostatAccessory {
   }
 
   private async setTargetHeatingCoolingState(value: CharacteristicValue): Promise<void> {
+    this.assertOnline();
+
     let mode = ThermostatMode.OFF;
 
     switch (value) {
@@ -187,7 +216,7 @@ export class DaikinThermostatAccessory {
         break;
     }
 
-    await this.platform.client.setMode(this.deviceId, mode);
+    await this.writeOrThrow(this.platform.client.setMode(this.deviceId, mode));
   }
 
   private clamp(value: number, min: number, max: number): number {
