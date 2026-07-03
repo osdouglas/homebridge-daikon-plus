@@ -10,7 +10,8 @@ test('reports HomeKit communication failure while thermostat is offline', async 
   const thermostat = accessory.getService('Thermostat');
   const schedule = accessory.getServiceById('Switch', 'schedule');
 
-  assert.equal(await thermostat.getCharacteristic(characteristic.StatusFault).get(), characteristic.StatusFault.GENERAL_FAULT);
+  assert.equal(thermostat.characteristics.has(characteristic.StatusFault), false);
+  assert.equal(schedule.characteristics.has(characteristic.StatusFault), false);
   await assert.rejects(
     thermostat.getCharacteristic(characteristic.CurrentTemperature).get(),
     error => error === -70402,

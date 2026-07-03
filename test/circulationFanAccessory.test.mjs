@@ -112,7 +112,7 @@ test('reports HomeKit communication failure while offline', async () => {
   new DaikinCirculationFanAccessory(platform(client, characteristic), accessory, 'zone-1');
   const service = accessory.getService('Fanv2');
 
-  assert.equal(await service.getCharacteristic(characteristic.StatusFault).get(), characteristic.StatusFault.GENERAL_FAULT);
+  assert.equal(service.characteristics.has(characteristic.StatusFault), false);
   await assert.rejects(
     service.getCharacteristic(characteristic.Active).get(),
     error => error === -70402,

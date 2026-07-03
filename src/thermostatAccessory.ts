@@ -26,7 +26,6 @@ export class DaikinThermostatAccessory {
     this.service = accessory.getService(platform.Service.Thermostat) ?? accessory.addService(platform.Service.Thermostat);
     this.service.setCharacteristic(platform.Characteristic.Name, accessory.displayName);
     this.service.getCharacteristic(platform.Characteristic.TargetHeatingCoolingState).setProps(this.targetHeatingCoolingStateProps());
-    this.service.getCharacteristic(platform.Characteristic.StatusFault).onGet(() => this.getStatusFault());
 
     this.service.getCharacteristic(platform.Characteristic.CurrentHeatingCoolingState).onGet(() => {
       this.platform.client.requestRefreshNow();
@@ -106,7 +105,6 @@ export class DaikinThermostatAccessory {
         accessory.getServiceById(platform.Service.Switch, 'schedule') ??
         accessory.addService(platform.Service.Switch, SCHEDULE_SERVICE_NAME, 'schedule');
       this.scheduleService.setCharacteristic(platform.Characteristic.Name, SCHEDULE_SERVICE_NAME);
-      this.scheduleService.getCharacteristic(platform.Characteristic.StatusFault).onGet(() => this.getStatusFault());
       this.scheduleService
         .getCharacteristic(platform.Characteristic.On)
         .onGet(() => {
@@ -120,7 +118,6 @@ export class DaikinThermostatAccessory {
         });
     }
 
-    this.updateFaultStatus();
     this.platform.client.addListener(this.deviceId, this.updateValues.bind(this));
   }
 
@@ -130,7 +127,6 @@ export class DaikinThermostatAccessory {
     const heatingProps = this.heatingThresholdProps();
     const coolingProps = this.coolingThresholdProps();
 
-    this.updateFaultStatus();
     this.service.getCharacteristic(characteristic.TargetHeatingCoolingState).setProps(this.targetHeatingCoolingStateProps());
     this.service.getCharacteristic(characteristic.TargetTemperature).setProps(temperatureProps);
     this.service.getCharacteristic(characteristic.HeatingThresholdTemperature).setProps(heatingProps);
@@ -158,18 +154,6 @@ export class DaikinThermostatAccessory {
       this.clamp(this.platform.client.getCurrentHumidity(this.deviceId), 0, 100),
     );
     this.scheduleService?.updateCharacteristic(characteristic.On, this.platform.client.getScheduleEnabled(this.deviceId));
-  }
-
-  private updateFaultStatus(): void {
-    const statusFault = this.getStatusFault();
-    this.service.updateCharacteristic(this.platform.Characteristic.StatusFault, statusFault);
-    this.scheduleService?.updateCharacteristic(this.platform.Characteristic.StatusFault, statusFault);
-  }
-
-  private getStatusFault(): CharacteristicValue {
-    return this.platform.client.isDeviceOnline(this.deviceId)
-      ? this.platform.Characteristic.StatusFault.NO_FAULT
-      : this.platform.Characteristic.StatusFault.GENERAL_FAULT;
   }
 
   private assertOnline(): void {
