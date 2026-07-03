@@ -81,10 +81,10 @@ export class DaikinCirculationFanAccessory {
   private async setActive(value: CharacteristicValue): Promise<void> {
     this.assertOnline();
     const active = Number(value) === this.platform.Characteristic.Active.ACTIVE;
-    await this.platform.client.setFanCirculation(this.deviceId, {
+    await this.writeOrThrow(this.platform.client.setFanCirculation(this.deviceId, {
       fanCirculate: active ? this.activeCirculationMode({ preferManual: true }) : FanCirculateMode.OFF,
       fanCirculateSpeed: this.currentSpeed(),
-    });
+    }));
   }
 
   private getCurrentFanState(): CharacteristicValue {
@@ -109,10 +109,10 @@ export class DaikinCirculationFanAccessory {
       Number(value) === this.platform.Characteristic.TargetFanState.AUTO
         ? FanCirculateMode.SCHEDULE
         : this.activeCirculationMode({ preferManual: true });
-    await this.platform.client.setFanCirculation(this.deviceId, {
+    await this.writeOrThrow(this.platform.client.setFanCirculation(this.deviceId, {
       fanCirculate,
       fanCirculateSpeed: this.currentSpeed(),
-    });
+    }));
   }
 
   private getRotationSpeed(): CharacteristicValue {
@@ -126,17 +126,17 @@ export class DaikinCirculationFanAccessory {
     this.assertOnline();
     const rotationSpeed = Number(value);
     if (rotationSpeed <= 0) {
-      await this.platform.client.setFanCirculation(this.deviceId, {
+      await this.writeOrThrow(this.platform.client.setFanCirculation(this.deviceId, {
         fanCirculate: FanCirculateMode.OFF,
         fanCirculateSpeed: this.currentSpeed(),
-      });
+      }));
       return;
     }
 
-    await this.platform.client.setFanCirculation(this.deviceId, {
+    await this.writeOrThrow(this.platform.client.setFanCirculation(this.deviceId, {
       fanCirculate: this.activeCirculationMode({ preferManual: true }),
       fanCirculateSpeed: this.rotationSpeedToSpeed(rotationSpeed),
-    });
+    }));
   }
 
   private activeCirculationMode(options: { preferManual?: boolean } = {}): FanCirculateMode {
@@ -191,6 +191,13 @@ export class DaikinCirculationFanAccessory {
 
   private assertOnline(): void {
     if (!this.platform.client.isDeviceOnline(this.deviceId)) {
+      throw HAPStatus.SERVICE_COMMUNICATION_FAILURE;
+    }
+  }
+
+  private async writeOrThrow(write: Promise<boolean>): Promise<void> {
+    const didWrite = await write;
+    if (!didWrite && !this.platform.client.isDeviceOnline(this.deviceId)) {
       throw HAPStatus.SERVICE_COMMUNICATION_FAILURE;
     }
   }

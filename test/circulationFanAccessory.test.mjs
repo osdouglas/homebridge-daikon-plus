@@ -119,13 +119,39 @@ test('reports HomeKit communication failure while offline', async () => {
   );
 });
 
-function fixture({ fanCirculate, fanCirculateSpeed }) {
+test('rejects circulation fan writes that discover Daikin went offline', async () => {
+  const { accessory, client, characteristic } = fixture({
+    fanCirculate: 0,
+    fanCirculateSpeed: 1,
+    writeOffline: true,
+  });
+
+  new DaikinCirculationFanAccessory(platform(client, characteristic), accessory, 'zone-1');
+  const active = accessory.getService('Fanv2').getCharacteristic(characteristic.Active);
+
+  await assert.rejects(
+    active.set(characteristic.Active.ACTIVE),
+    error => error === -70402,
+  );
+  assert.deepEqual(client.fanWrites, [
+    {
+      deviceId: 'zone-1',
+      update: {
+        fanCirculate: 1,
+        fanCirculateSpeed: 1,
+      },
+    },
+  ]);
+});
+
+function fixture({ fanCirculate, fanCirculateSpeed, writeOffline = false }) {
   const characteristic = fakeCharacteristic();
   const client = {
     fanCirculate,
     fanCirculateSpeed,
     fanWrites: [],
     online: true,
+    writeOffline,
     addListener() {},
     getCurrentStatus() {
       return 5;
@@ -142,6 +168,10 @@ function fixture({ fanCirculate, fanCirculateSpeed }) {
     requestRefreshNow() {},
     async setFanCirculation(deviceId, update) {
       this.fanWrites.push({ deviceId, update });
+      if (this.writeOffline) {
+        this.online = false;
+        return false;
+      }
       this.fanCirculate = update.fanCirculate;
       this.fanCirculateSpeed = update.fanCirculateSpeed;
       return true;
