@@ -74,7 +74,7 @@ Optional settings:
 - Each thermostat returned by `GET /v1/devices` is exposed as a HomeKit thermostat.
 - If outdoor readings are discovered, the thermostat also gets a separate HomeKit Outdoor Unit accessory with temperature and humidity sensors.
 - If circulation fan fields are discovered, the thermostat also gets a separate HomeKit Circulation Fan accessory.
-- The thermostat accessory includes a Schedule switch when `scheduleEnabled` is discovered.
+- The thermostat accessory includes a Schedule switch when the `scheduleEnabled` field is present, whether the current value is `true` or `false`.
 - Optional HomeKit accessories and services are sticky once discovered. Transiently missing optional Daikin fields do not remove HomeKit surfaces, but writes that depend on currently missing fields are skipped with a warning.
 - HomeKit temperatures are Celsius; Daikin Open API temperatures are treated as Celsius.
 - Writes use `PUT /v1/devices/{deviceId}/msp` with `mode`, `heatSetpoint`, and `coolSetpoint`.
@@ -85,7 +85,7 @@ Optional settings:
 - Background polling is kept to Daikin's documented minimum interval: 180 seconds.
 - Successful HomeKit writes update local state immediately, then reconcile with the cloud after Daikin's documented 15-second reflection window.
 - HomeKit target modes are limited from Daikin's `modeLimit` before writes are sent to the Open API.
-- Emergency heat is displayed as HomeKit heat but is not exposed as a separate HomeKit control.
+- Emergency heat is not controlled in this release. If Daikin reports emergency heat as the current mode, thermostat mode and setpoint writes are skipped until a later refresh reports a standard mode.
 
 Set `developerMode` only temporarily. It logs raw API payloads, device IDs, and detailed HVAC state, and is mainly useful when checking how a zoned system appears in the Open API.
 

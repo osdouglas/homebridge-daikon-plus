@@ -282,7 +282,7 @@ test('blocks unsupported mode writes before calling the Daikin msp endpoint', as
   assert.equal(client.getMode('zone-1'), 1);
 });
 
-test('preserves emergency heat mode when writing setpoints', async () => {
+test('skips thermostat writes while emergency heat mode is active', async () => {
   const { calls, installFetch } = fetchQueue([
     jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
     jsonResponse([
@@ -299,7 +299,6 @@ test('preserves emergency heat mode when writing setpoints', async () => {
       coolSetpoint: 24,
       tempIndoor: 19,
     }),
-    emptyResponse(),
   ]);
   installFetch();
 
@@ -308,18 +307,13 @@ test('preserves emergency heat mode when writing setpoints', async () => {
   await client.initialize();
   assert.equal(client.getMode('zone-1'), 4);
 
-  const didWrite = await client.setTargetTemperature('zone-1', 21);
+  assert.equal(await client.setMode('zone-1', 1), false);
+  assert.equal(await client.setTargetTemperature('zone-1', 21), false);
+  assert.equal(await client.setThresholds('zone-1', 21, undefined), false);
 
-  assert.equal(didWrite, true);
-  const writeCall = calls.at(-1);
-  assert.equal(writeCall.url, `${devicesUrl}/zone-1/msp`);
-  assert.deepEqual(JSON.parse(writeCall.init.body), {
-    mode: 4,
-    heatSetpoint: 21,
-    coolSetpoint: 24,
-  });
+  assert.equal(calls.length, 3);
   assert.equal(client.getMode('zone-1'), 4);
-  assert.equal(client.getTargetTemperature('zone-1'), 21);
+  assert.equal(client.getTargetTemperature('zone-1'), 20);
 });
 
 test('logs payload validation warnings while keeping safe normalized state', async () => {

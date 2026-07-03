@@ -32,11 +32,15 @@ Use the `Release` GitHub Actions workflow for normal releases:
    `package.json` version.
 2. In GitHub Actions, run `Release` from `main`.
 3. The workflow validates the checked-in package version, runs lint and tests,
-   inspects the npm package contents, creates the exact `vX.Y.Z` tag and
-   GitHub Release, publishes to npm, then publishes the GitHub Release notes.
+   inspects the npm package contents, then creates a draft GitHub Release for
+   the exact `vX.Y.Z` tag.
+4. Review and finalize the draft on GitHub's Releases page.
+5. When the GitHub Release is published, the workflow checks out the release
+   tag, repeats lint, tests, and package inspection, then publishes to npm.
 
-If `main` is not ready to release, the workflow fails before publishing. It
-will not bump versions, create release branches, or guess what should ship.
+If `main` is not ready to release, the workflow fails before creating the draft
+release. It will not bump versions, create release branches, or guess what
+should ship.
 
 Prerelease versions such as `0.2.0-rc.1` publish to the npm `beta` tag. Stable
 versions such as `0.2.0` publish to the npm `latest` tag.
@@ -46,9 +50,9 @@ on and an older minor line needs a patch. In that case, get the maintenance
 branch into the exact state that should ship, run `Release` from that branch,
 and separately reapply any still-relevant fixes to `main`.
 
-Manual GitHub Releases are a fallback path only. If one is published directly,
-the `Release` workflow still verifies that the GitHub Release tag exactly
-matches `package.json`, then publishes to the correct npm dist-tag.
+Manual GitHub Releases are also supported. If one is published directly, the
+`Release` workflow still verifies that the GitHub Release tag exactly matches
+`package.json`, then publishes to the correct npm dist-tag.
 
 Before the first automated publish, the repository owner must do the one-time
 platform setup:
@@ -63,11 +67,13 @@ platform setup:
    - environment: `npm`
    - allowed action: `npm publish`
 3. On GitHub, create an `npm` environment and add any desired deployment
-   protection rules.
+   protection rules. Use this environment if you want an additional approval
+   gate after the GitHub Release is published but before npm publish runs.
 
 Do not publish from a local checkout except to bootstrap the package name or
 recover from a failed release. The normal path is to make `main` releasable,
-run `Release`, then let GitHub Actions create the release and publish to npm.
+run `Release`, finalize the GitHub Release, then let GitHub Actions publish to
+npm.
 
 ## Branch Install
 

@@ -186,10 +186,7 @@ export class DaikinOpenApiClient {
       return false;
     }
 
-    const normalizedMode = this.normalizeMode(mode);
-    const requestedMode = normalizedMode === ThermostatMode.HEAT && data.mode === ThermostatMode.EMERGENCY_HEAT
-      ? ThermostatMode.EMERGENCY_HEAT
-      : normalizedMode;
+    const requestedMode = this.normalizeMode(mode);
 
     if (!this.canWriteMode(deviceId, requestedMode)) {
       this.log.warn('Skipping unsupported Daikin mode %d for %s.', requestedMode, deviceId);
@@ -314,6 +311,14 @@ export class DaikinOpenApiClient {
   }
 
   private async putMsp(deviceId: string, update: DaikinThermostatUpdate): Promise<boolean> {
+    if (this.devices.get(deviceId)?.data?.mode === ThermostatMode.EMERGENCY_HEAT) {
+      this.log.warn(
+        'Skipping Daikin thermostat write for %s because emergency heat mode is active and is not supported by this plugin.',
+        deviceId,
+      );
+      return false;
+    }
+
     if (!this.canWriteMode(deviceId, update.mode)) {
       this.log.warn('Skipping unsupported Daikin mode %d for %s.', update.mode, deviceId);
       return false;
@@ -434,10 +439,7 @@ export class DaikinOpenApiClient {
   }
 
   private canWriteMode(deviceId: string, mode: ThermostatMode): boolean {
-    if (mode === ThermostatMode.EMERGENCY_HEAT) {
-      return this.devices.get(deviceId)?.data?.mode === ThermostatMode.EMERGENCY_HEAT;
-    }
-    return this.getSupportedModes(deviceId).includes(mode);
+    return mode !== ThermostatMode.EMERGENCY_HEAT && this.getSupportedModes(deviceId).includes(mode);
   }
 
   private fallbackSupportedModes(data: DaikinThermostatData | undefined): ThermostatMode[] {
@@ -445,8 +447,8 @@ export class DaikinOpenApiClient {
       return [ThermostatMode.OFF];
     }
 
-    const mappedMode = data.mode === ThermostatMode.EMERGENCY_HEAT ? ThermostatMode.HEAT : data.mode;
-    return [...new Set([ThermostatMode.OFF, mappedMode])];
+    const fallbackMode = data.mode === ThermostatMode.EMERGENCY_HEAT ? ThermostatMode.OFF : data.mode;
+    return [...new Set([ThermostatMode.OFF, fallbackMode])];
   }
 
   private logError(message: string, error: unknown): void {

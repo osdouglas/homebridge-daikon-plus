@@ -62,7 +62,7 @@ Schedule and circulation fan controls are separate Daikin write paths:
 
 Optional HomeKit surfaces are sticky once discovered. The platform records discovered outdoor-unit, circulation-fan, and schedule support in accessory context and also infers support from already-cached optional accessories or services. Transiently missing optional Open API fields should not remove HomeKit accessories because that can break rooms, scenes, favorites, and automations. Writes for currently missing optional controls fail before calling Daikin.
 
-Emergency heat is deliberately conservative. If Daikin reports emergency heat as the current mode, HomeKit displays heat and setpoint writes preserve the Daikin mode value. HomeKit does not expose a separate emergency heat control.
+Emergency heat is deliberately unsupported for the first release. If Daikin reports emergency heat as the current mode, thermostat mode and setpoint writes fail closed until a later refresh reports a standard mode. HomeKit does not expose a separate emergency heat control.
 
 If the Open API later exposes a stronger write response, event stream, webhook, or push mechanism, use that instead of increasing background polling.
 

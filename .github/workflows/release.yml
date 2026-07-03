@@ -6,21 +6,21 @@ on:
     types:
       - published
 
-permissions:
-  contents: write
-  id-token: write
+permissions: {}
 
 jobs:
-  publish:
-    name: Create release and publish to npm
+  draft:
+    name: Draft GitHub release
     runs-on: ubuntu-latest
-    environment: npm
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
+          ref: ${{ github.ref_name }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -31,7 +31,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24.x
-          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -42,56 +41,37 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      - name: Validate release
+      - name: Validate draft release
         id: release
         run: |
           set -euo pipefail
 
           package_version="$(node -p "require('./package.json').version")"
           release_tag="v${package_version}"
-          create_release="false"
           target_sha="$(git rev-parse HEAD)"
+          source_ref="${GITHUB_REF_NAME}"
+
+          if [[ ! "${source_ref}" =~ ^(main|rel/[0-9]+\.[0-9]+\.x)$ ]]; then
+            echo "::error::Draft releases must be created from main or a rel/X.Y.x maintenance branch."
+            exit 1
+          fi
 
           if [[ ! "${release_tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::package.json version must look like 1.2.3 or 1.2.3-rc.1."
             exit 1
           fi
 
+          if git ls-remote --exit-code --tags origin "refs/tags/${release_tag}" >/dev/null 2>&1; then
+            echo "::error::Tag ${release_tag} already exists."
+            exit 1
+          fi
+
           if [[ "${package_version}" == *-* ]]; then
-            npm_tag="beta"
             prerelease="true"
           else
-            npm_tag="latest"
             prerelease="false"
           fi
 
-          if [ "${{ github.event_name }}" = "release" ]; then
-            if [ "${{ github.event.release.tag_name }}" != "${release_tag}" ]; then
-              echo "::error::GitHub Release tag ${{ github.event.release.tag_name }} does not match package.json version ${package_version}."
-              exit 1
-            fi
-
-            if [ "${{ github.event.release.prerelease }}" != "${prerelease}" ]; then
-              echo "::error::GitHub prerelease state does not match package version ${package_version}."
-              exit 1
-            fi
-          else
-            source_ref="${GITHUB_REF_NAME}"
-            create_release="true"
-
-            if [[ ! "${source_ref}" =~ ^(main|rel/[0-9]+\.[0-9]+\.x)$ ]]; then
-              echo "::error::Run releases from main or a rel/X.Y.x maintenance branch."
-              exit 1
-            fi
-
-            if git ls-remote --exit-code --tags origin "refs/tags/${release_tag}" >/dev/null 2>&1; then
-              echo "::error::Tag ${release_tag} already exists."
-              exit 1
-            fi
-          fi
-
-          echo "create_release=${create_release}" >> "${GITHUB_OUTPUT}"
-          echo "npm_tag=${npm_tag}" >> "${GITHUB_OUTPUT}"
           echo "prerelease=${prerelease}" >> "${GITHUB_OUTPUT}"
           echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
           echo "target_sha=${target_sha}" >> "${GITHUB_OUTPUT}"
@@ -100,7 +80,6 @@ jobs:
         run: pnpm pack --dry-run
 
       - name: Create draft GitHub release
-        if: steps.release.outputs.create_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -122,11 +101,76 @@ jobs:
 
           gh "${args[@]}"
 
-      - name: Publish to npm
-        run: npm publish --tag "${{ steps.release.outputs.npm_tag }}"
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
 
-      - name: Publish GitHub release
-        if: steps.release.outputs.create_release == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release edit "${{ steps.release.outputs.release_tag }}" --draft=false
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run lint
+        run: pnpm lint
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Validate published release
+        id: release
+        run: |
+          set -euo pipefail
+
+          package_version="$(node -p "require('./package.json').version")"
+          release_tag="v${package_version}"
+
+          if [[ ! "${release_tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::package.json version must look like 1.2.3 or 1.2.3-rc.1."
+            exit 1
+          fi
+
+          if [ "${{ github.event.release.tag_name }}" != "${release_tag}" ]; then
+            echo "::error::GitHub Release tag ${{ github.event.release.tag_name }} does not match package.json version ${package_version}."
+            exit 1
+          fi
+
+          if [[ "${package_version}" == *-* ]]; then
+            npm_tag="beta"
+            prerelease="true"
+          else
+            npm_tag="latest"
+            prerelease="false"
+          fi
+
+          if [ "${{ github.event.release.prerelease }}" != "${prerelease}" ]; then
+            echo "::error::GitHub prerelease state does not match package version ${package_version}."
+            exit 1
+          fi
+
+          echo "npm_tag=${npm_tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Inspect package contents
+        run: pnpm pack --dry-run
+
+      - name: Publish to npm
+        run: npm publish --access public --tag "${{ steps.release.outputs.npm_tag }}"

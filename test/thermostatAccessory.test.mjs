@@ -70,7 +70,16 @@ test('rejects thermostat writes that discover Daikin went offline', async () => 
   assert.deepEqual(schedule.client.scheduleWrites, [{ deviceId: 'zone-1', scheduleEnabled: true }]);
 });
 
-function fixture({ online, schedule, writeOffline = false }) {
+test('does not expose emergency heat as HomeKit heat target mode', async () => {
+  const { accessory, characteristic, client } = fixture({ online: true, schedule: false, mode: 4 });
+
+  new DaikinThermostatAccessory(platform(client, characteristic), accessory, 'zone-1');
+  const targetMode = accessory.getService('Thermostat').getCharacteristic(characteristic.TargetHeatingCoolingState);
+
+  assert.equal(await targetMode.get(), characteristic.TargetHeatingCoolingState.OFF);
+});
+
+function fixture({ online, schedule, writeOffline = false, mode = 1 }) {
   const characteristic = fakeCharacteristic();
   const client = {
     online,
@@ -96,7 +105,7 @@ function fixture({ online, schedule, writeOffline = false }) {
       return 20;
     },
     getMode() {
-      return 1;
+      return mode;
     },
     getScheduleEnabled() {
       return false;
