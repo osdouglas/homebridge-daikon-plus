@@ -21,6 +21,54 @@ The unit tests use Node's built-in `node:test` runner. The `test` script builds 
 
 CI runs lint and tests on pull requests and pushes.
 
+## Releases
+
+Normal releases are cut from `main`. The release tag is the immutable record of
+what shipped, and the npm package version must match that tag exactly.
+
+Use the `Release` GitHub Actions workflow for normal releases:
+
+1. Get `main` into the exact state that should ship, including the intended
+   `package.json` version.
+2. In GitHub Actions, run `Release` from `main`.
+3. The workflow validates the checked-in package version, runs lint and tests,
+   inspects the npm package contents, creates the exact `vX.Y.Z` tag and
+   GitHub Release, publishes to npm, then publishes the GitHub Release notes.
+
+If `main` is not ready to release, the workflow fails before publishing. It
+will not bump versions, create release branches, or guess what should ship.
+
+Prerelease versions such as `0.2.0-rc.1` publish to the npm `beta` tag. Stable
+versions such as `0.2.0` publish to the npm `latest` tag.
+
+Maintenance branches such as `rel/0.1.x` are only needed when `main` has moved
+on and an older minor line needs a patch. In that case, get the maintenance
+branch into the exact state that should ship, run `Release` from that branch,
+and separately reapply any still-relevant fixes to `main`.
+
+Manual GitHub Releases are a fallback path only. If one is published directly,
+the `Release` workflow still verifies that the GitHub Release tag exactly
+matches `package.json`, then publishes to the correct npm dist-tag.
+
+Before the first automated publish, the repository owner must do the one-time
+platform setup:
+
+1. Create or reserve the `homebridge-daikon-plus` npm package. If npm does not
+   expose Trusted Publisher settings before the package exists, do one manual
+   beta publish first.
+2. On npm, configure Trusted Publishing for GitHub Actions:
+   - owner: `osdouglas`
+   - repository: `homebridge-daikon-plus`
+   - workflow filename: `release.yml`
+   - environment: `npm`
+   - allowed action: `npm publish`
+3. On GitHub, create an `npm` environment and add any desired deployment
+   protection rules.
+
+Do not publish from a local checkout except to bootstrap the package name or
+recover from a failed release. The normal path is to make `main` releasable,
+run `Release`, then let GitHub Actions create the release and publish to npm.
+
 ## Branch Install
 
 Homebridge runs compiled JavaScript from `dist`. Published npm packages include `dist`; git branch installs use the npm `prepare` script to build after cloning.
@@ -36,7 +84,7 @@ sudo -u homebridge env HOME=/home/homebridge sh -lc '
 sudo hb-service restart
 ```
 
-Configure and test on the Homebridge host that will run the plugin. Start with `readonly: true`, then turn off `logRaw` before write testing.
+Configure and test on the Homebridge host that will run the plugin. Start with `readonly: true`, then turn off `developerMode` before write testing.
 
 ## Test Shape
 

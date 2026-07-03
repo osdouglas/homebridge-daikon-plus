@@ -1,5 +1,11 @@
 # 🫜 Daikon Plus
 
+[![Checks](https://github.com/osdouglas/homebridge-daikon-plus/actions/workflows/checks.yml/badge.svg?branch=main)](https://github.com/osdouglas/homebridge-daikon-plus/actions/workflows/checks.yml)
+[![npm version](https://img.shields.io/npm/v/homebridge-daikon-plus.svg)](https://www.npmjs.com/package/homebridge-daikon-plus)
+[![npm downloads](https://img.shields.io/npm/dm/homebridge-daikon-plus.svg)](https://www.npmjs.com/package/homebridge-daikon-plus)
+[![node](https://img.shields.io/node/v/homebridge-daikon-plus.svg)](https://www.npmjs.com/package/homebridge-daikon-plus)
+[![license](https://img.shields.io/github/license/osdouglas/homebridge-daikon-plus.svg)](LICENSE)
+
 Homebridge platform plugin for Daikin One Open API-compatible thermostats.
 
 Daikon Plus is a small Homebridge bridge for Daikin One+. The radish name is deliberate: Daikin One+ -> Daikone Plus -> Daikon Plus. Cute on the outside, boring adapter on the inside.
@@ -7,6 +13,16 @@ Daikon Plus is a small Homebridge bridge for Daikin One+. The radish name is del
 Official Daikin Open API docs: [Overview](https://www.daikinone.com/openapi/overview/index.html), [Documentation](https://www.daikinone.com/openapi/documentation/index.html), [License Terms](https://www.daikinone.com/openapi/overview/terms/index.html).
 
 Design notes live in [DESIGN.md](DESIGN.md). Development notes live in [DEVELOPMENT.md](DEVELOPMENT.md).
+
+## Installation
+
+Install from the Homebridge UI by searching for `homebridge-daikon-plus` on the Plugins tab.
+
+For CLI installs on a Homebridge host:
+
+```sh
+npm install -g homebridge-daikon-plus
+```
 
 ## Credentials
 

@@ -1,0 +1,31 @@
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: Breaking Changes
+      labels:
+        - breaking-change
+        - Semver-Major
+    - title: Features
+      labels:
+        - enhancement
+        - feature
+        - Semver-Minor
+    - title: Fixes
+      labels:
+        - bug
+        - fix
+        - Semver-Patch
+    - title: Documentation
+      labels:
+        - documentation
+        - docs
+    - title: Maintenance
+      labels:
+        - chore
+        - dependencies
+        - maintenance
+    - title: Other Changes
+      labels:
+        - "*"
