@@ -186,10 +186,7 @@ export class DaikinOpenApiClient {
       return false;
     }
 
-    const normalizedMode = this.normalizeMode(mode);
-    const requestedMode = normalizedMode === ThermostatMode.HEAT && data.mode === ThermostatMode.EMERGENCY_HEAT
-      ? ThermostatMode.EMERGENCY_HEAT
-      : normalizedMode;
+    const requestedMode = this.normalizeMode(mode);
 
     if (!this.canWriteMode(deviceId, requestedMode)) {
       this.log.warn('Skipping unsupported Daikin mode %d for %s.', requestedMode, deviceId);
@@ -434,10 +431,7 @@ export class DaikinOpenApiClient {
   }
 
   private canWriteMode(deviceId: string, mode: ThermostatMode): boolean {
-    if (mode === ThermostatMode.EMERGENCY_HEAT) {
-      return this.devices.get(deviceId)?.data?.mode === ThermostatMode.EMERGENCY_HEAT;
-    }
-    return this.getSupportedModes(deviceId).includes(mode);
+    return mode === this.devices.get(deviceId)?.data?.mode || this.getSupportedModes(deviceId).includes(mode);
   }
 
   private fallbackSupportedModes(data: DaikinThermostatData | undefined): ThermostatMode[] {
@@ -445,8 +439,8 @@ export class DaikinOpenApiClient {
       return [ThermostatMode.OFF];
     }
 
-    const mappedMode = data.mode === ThermostatMode.EMERGENCY_HEAT ? ThermostatMode.HEAT : data.mode;
-    return [...new Set([ThermostatMode.OFF, mappedMode])];
+    const fallbackMode = data.mode === ThermostatMode.EMERGENCY_HEAT ? ThermostatMode.OFF : data.mode;
+    return [...new Set([ThermostatMode.OFF, fallbackMode])];
   }
 
   private logError(message: string, error: unknown): void {

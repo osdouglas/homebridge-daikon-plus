@@ -282,7 +282,7 @@ test('blocks unsupported mode writes before calling the Daikin msp endpoint', as
   assert.equal(client.getMode('zone-1'), 1);
 });
 
-test('preserves emergency heat mode when writing setpoints', async () => {
+test('passes through current Daikin mode when writing setpoints', async () => {
   const { calls, installFetch } = fetchQueue([
     jsonResponse({ accessToken: 'token-1', accessTokenExpiresIn: 3600 }),
     jsonResponse([

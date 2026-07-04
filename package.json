@@ -15,9 +15,11 @@
     "url": "https://github.com/osdouglas/homebridge-daikon-plus/issues"
   },
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "files": [
     "dist",
     "config.schema.json",
+    "LICENSE",
     "README.md",
     "DEVELOPMENT.md",
     "DESIGN.md"

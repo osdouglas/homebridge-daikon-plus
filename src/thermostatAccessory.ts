@@ -184,7 +184,6 @@ export class DaikinThermostatAccessory {
   private getTargetHeatingCoolingState(): CharacteristicValue {
     switch (this.platform.client.getMode(this.deviceId)) {
       case ThermostatMode.HEAT:
-      case ThermostatMode.EMERGENCY_HEAT:
         return this.platform.Characteristic.TargetHeatingCoolingState.HEAT;
       case ThermostatMode.COOL:
         return this.platform.Characteristic.TargetHeatingCoolingState.COOL;
@@ -239,7 +238,6 @@ export class DaikinThermostatAccessory {
       validValues: this.platform.client.getSupportedModes(this.deviceId).map(mode => {
         switch (mode) {
           case ThermostatMode.HEAT:
-          case ThermostatMode.EMERGENCY_HEAT:
             return this.platform.Characteristic.TargetHeatingCoolingState.HEAT;
           case ThermostatMode.COOL:
             return this.platform.Characteristic.TargetHeatingCoolingState.COOL;
