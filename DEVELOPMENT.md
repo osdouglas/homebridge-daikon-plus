@@ -58,8 +58,24 @@ Before the first automated publish, the repository owner must do the one-time
 platform setup:
 
 1. Create or reserve the `homebridge-daikon-plus` npm package. If npm does not
-   expose Trusted Publisher settings before the package exists, do one manual
-   beta publish first.
+   expose Trusted Publisher settings before the package exists, bootstrap with a
+   throwaway prerelease version instead of the real release version:
+
+   ```sh
+   npm version 0.0.0-bootstrap.0 --no-git-tag-version
+   npm publish --access public --tag bootstrap
+   git checkout -- package.json
+   ```
+
+   Do not publish the checked-in stable version just to reserve the package
+   name. npm package versions are immutable, so publishing `0.1.0` during
+   bootstrap would make the later `v0.1.0` GitHub Release publish fail. If a
+   real release version is intentionally published manually, promote that exact
+   version instead of trying to republish it:
+
+   ```sh
+   npm dist-tag add homebridge-daikon-plus@0.1.0 latest
+   ```
 2. On npm, configure Trusted Publishing for GitHub Actions:
    - owner: `osdouglas`
    - repository: `homebridge-daikon-plus`
