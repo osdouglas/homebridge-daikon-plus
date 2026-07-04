@@ -1,4 +1,4 @@
-name: NPM Release
+name: NPM Deploy
 
 on:
   workflow_dispatch:
