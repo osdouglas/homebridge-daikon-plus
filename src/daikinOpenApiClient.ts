@@ -311,14 +311,6 @@ export class DaikinOpenApiClient {
   }
 
   private async putMsp(deviceId: string, update: DaikinThermostatUpdate): Promise<boolean> {
-    if (this.devices.get(deviceId)?.data?.mode === ThermostatMode.EMERGENCY_HEAT) {
-      this.log.warn(
-        'Skipping Daikin thermostat write for %s because emergency heat mode is active and is not supported by this plugin.',
-        deviceId,
-      );
-      return false;
-    }
-
     if (!this.canWriteMode(deviceId, update.mode)) {
       this.log.warn('Skipping unsupported Daikin mode %d for %s.', update.mode, deviceId);
       return false;
@@ -439,7 +431,7 @@ export class DaikinOpenApiClient {
   }
 
   private canWriteMode(deviceId: string, mode: ThermostatMode): boolean {
-    return mode !== ThermostatMode.EMERGENCY_HEAT && this.getSupportedModes(deviceId).includes(mode);
+    return mode === this.devices.get(deviceId)?.data?.mode || this.getSupportedModes(deviceId).includes(mode);
   }
 
   private fallbackSupportedModes(data: DaikinThermostatData | undefined): ThermostatMode[] {

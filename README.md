@@ -16,13 +16,13 @@ Design notes live in [DESIGN.md](DESIGN.md). Development notes live in [DEVELOPM
 
 ## Installation
 
-Install from the Homebridge UI by searching for `homebridge-daikon-plus` on the Plugins tab.
-
-For CLI installs on a Homebridge host:
+For the initial release and local validation, install on the Homebridge host with npm:
 
 ```sh
 npm install -g homebridge-daikon-plus
 ```
+
+Once the plugin is listed in Homebridge, it can be installed from the Homebridge UI by searching for `homebridge-daikon-plus` on the Plugins tab.
 
 ## Credentials
 
@@ -85,7 +85,7 @@ Optional settings:
 - Background polling is kept to Daikin's documented minimum interval: 180 seconds.
 - Successful HomeKit writes update local state immediately, then reconcile with the cloud after Daikin's documented 15-second reflection window.
 - HomeKit target modes are limited from Daikin's `modeLimit` before writes are sent to the Open API.
-- Emergency heat is not controlled in this release. If Daikin reports emergency heat as the current mode, thermostat mode and setpoint writes are skipped until a later refresh reports a standard mode.
+- Emergency heat is not exposed as a separate HomeKit control. Normal HomeKit mode and setpoint writes are sent to Daikin, and the Daikin API remains the source of truth.
 
 Set `developerMode` only temporarily. It logs raw API payloads, device IDs, and detailed HVAC state, and is mainly useful when checking how a zoned system appears in the Open API.
 
