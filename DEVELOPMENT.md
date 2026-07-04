@@ -26,11 +26,11 @@ CI runs lint and tests on pull requests and pushes.
 Normal releases are cut from `main`. The release tag is the immutable record of
 what shipped, and the npm package version must match that tag exactly.
 
-Use the `Release` GitHub Actions workflow for normal releases:
+Use the `NPM Release` GitHub Actions workflow for normal releases:
 
 1. Get `main` into the exact state that should ship, including the intended
    `package.json` version.
-2. In GitHub Actions, run `Release` from `main`.
+2. In GitHub Actions, run `NPM Release` from `main`.
 3. The workflow validates the checked-in package version, runs lint and tests,
    inspects the npm package contents, then creates a draft GitHub Release for
    the exact `vX.Y.Z` tag.
@@ -47,11 +47,11 @@ versions such as `0.2.0` publish to the npm `latest` tag.
 
 Maintenance branches such as `rel/0.1.x` are only needed when `main` has moved
 on and an older minor line needs a patch. In that case, get the maintenance
-branch into the exact state that should ship, run `Release` from that branch,
+branch into the exact state that should ship, run `NPM Release` from that branch,
 and separately reapply any still-relevant fixes to `main`.
 
 Manual GitHub Releases are also supported. If one is published directly, the
-`Release` workflow still verifies that the GitHub Release tag exactly matches
+`NPM Release` workflow still verifies that the GitHub Release tag exactly matches
 `package.json`, then publishes to the correct npm dist-tag.
 
 Before the first automated publish, the repository owner must do the one-time
@@ -63,7 +63,7 @@ platform setup:
 2. On npm, configure Trusted Publishing for GitHub Actions:
    - owner: `osdouglas`
    - repository: `homebridge-daikon-plus`
-   - workflow filename: `release.yml`
+   - workflow filename: `npm-release.yml`
    - environment: `npm`
    - allowed action: `npm publish`
 3. On GitHub, create an `npm` environment and add any desired deployment
@@ -72,7 +72,7 @@ platform setup:
 
 Do not publish from a local checkout except to bootstrap the package name or
 recover from a failed release. The normal path is to make `main` releasable,
-run `Release`, finalize the GitHub Release, then let GitHub Actions publish to
+run `NPM Release`, finalize the GitHub Release, then let GitHub Actions publish to
 npm.
 
 ## Branch Install
