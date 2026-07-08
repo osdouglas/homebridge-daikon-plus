@@ -80,7 +80,7 @@ Optional settings:
 - Writes use `PUT /v1/devices/{deviceId}/msp` with `mode`, `heatSetpoint`, and `coolSetpoint`.
 - Schedule writes use `PUT /v1/devices/{deviceId}/schedule`.
 - Circulation fan writes use `PUT /v1/devices/{deviceId}/fan`; thermostat temperature and mode changes never send fan payloads.
-- Successful HomeKit thermostat mode or setpoint writes disable the Daikin schedule by Open API design; the Schedule switch can be turned back on to resume Daikin scheduling.
+- HomeKit thermostat mode or setpoint writes explicitly disable the Daikin schedule before writing the thermostat payload; the Schedule switch can be turned back on to resume Daikin scheduling.
 - When Daikin reports `DeviceOfflineException`, the affected HomeKit services report a fault and reads fail with a HomeKit communication error until a later refresh succeeds.
 - Background polling is kept to Daikin's documented minimum interval: 180 seconds.
 - Successful HomeKit writes update local state immediately, then reconcile with the cloud after Daikin's documented 15-second reflection window.

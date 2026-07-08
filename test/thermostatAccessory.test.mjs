@@ -79,12 +79,90 @@ test('does not expose emergency heat as HomeKit heat target mode', async () => {
   assert.equal(await targetMode.get(), characteristic.TargetHeatingCoolingState.OFF);
 });
 
-function fixture({ online, schedule, writeOffline = false, mode = 1 }) {
+test('disables schedule before manual thermostat mode writes', async () => {
+  const { accessory, characteristic, client } = fixture({ online: true, schedule: true });
+
+  new DaikinThermostatAccessory(platform(client, characteristic), accessory, 'zone-1');
+  await accessory
+    .getService('Thermostat')
+    .getCharacteristic(characteristic.TargetHeatingCoolingState)
+    .set(characteristic.TargetHeatingCoolingState.COOL);
+
+  assert.deepEqual(client.operations, [
+    { type: 'schedule', deviceId: 'zone-1', scheduleEnabled: false },
+    { type: 'mode', deviceId: 'zone-1', mode: 2 },
+  ]);
+});
+
+test('disables schedule before manual target temperature writes', async () => {
+  const { accessory, characteristic, client } = fixture({ online: true, schedule: true });
+
+  new DaikinThermostatAccessory(platform(client, characteristic), accessory, 'zone-1');
+  await accessory.getService('Thermostat').getCharacteristic(characteristic.TargetTemperature).set(22);
+
+  assert.deepEqual(client.operations, [
+    { type: 'schedule', deviceId: 'zone-1', scheduleEnabled: false },
+    { type: 'targetTemperature', deviceId: 'zone-1', temperature: 22 },
+  ]);
+});
+
+test('disables schedule before manual threshold writes', async () => {
+  const heat = fixture({ online: true, schedule: true });
+  new DaikinThermostatAccessory(platform(heat.client, heat.characteristic), heat.accessory, 'zone-1');
+  await heat.accessory.getService('Thermostat').getCharacteristic(heat.characteristic.HeatingThresholdTemperature).set(19);
+  assert.deepEqual(heat.client.operations, [
+    { type: 'schedule', deviceId: 'zone-1', scheduleEnabled: false },
+    { type: 'thresholds', deviceId: 'zone-1', heatSetpoint: 19, coolSetpoint: undefined },
+  ]);
+
+  const cool = fixture({ online: true, schedule: true });
+  new DaikinThermostatAccessory(platform(cool.client, cool.characteristic), cool.accessory, 'zone-1');
+  await cool.accessory.getService('Thermostat').getCharacteristic(cool.characteristic.CoolingThresholdTemperature).set(25);
+  assert.deepEqual(cool.client.operations, [
+    { type: 'schedule', deviceId: 'zone-1', scheduleEnabled: false },
+    { type: 'thresholds', deviceId: 'zone-1', heatSetpoint: undefined, coolSetpoint: 25 },
+  ]);
+});
+
+test('rejects manual thermostat writes when schedule disable fails', async () => {
+  const { accessory, characteristic, client } = fixture({
+    online: true,
+    schedule: true,
+    scheduleWriteFails: true,
+  });
+
+  new DaikinThermostatAccessory(platform(client, characteristic), accessory, 'zone-1');
+
+  await assert.rejects(
+    accessory.getService('Thermostat').getCharacteristic(characteristic.TargetTemperature).set(22),
+    error => error === -70402,
+  );
+  assert.deepEqual(client.operations, [
+    { type: 'schedule', deviceId: 'zone-1', scheduleEnabled: false },
+  ]);
+  assert.deepEqual(client.targetTemperatureWrites, []);
+});
+
+test('skips schedule disable before manual thermostat writes when schedule is not exposed', async () => {
+  const { accessory, characteristic, client } = fixture({ online: true, schedule: false });
+
+  new DaikinThermostatAccessory(platform(client, characteristic), accessory, 'zone-1');
+  await accessory.getService('Thermostat').getCharacteristic(characteristic.TargetTemperature).set(22);
+
+  assert.deepEqual(client.operations, [
+    { type: 'targetTemperature', deviceId: 'zone-1', temperature: 22 },
+  ]);
+  assert.deepEqual(client.scheduleWrites, []);
+});
+
+function fixture({ online, schedule, writeOffline = false, mode = 1, scheduleWriteFails = false }) {
   const characteristic = fakeCharacteristic();
   const client = {
     online,
     modeWrites: [],
+    operations: [],
     scheduleWrites: [],
+    scheduleWriteFails,
     targetTemperatureWrites: [],
     thresholdWrites: [],
     writeOffline,
@@ -131,18 +209,25 @@ function fixture({ online, schedule, writeOffline = false, mode = 1 }) {
     requestRefreshNow() {},
     async setMode(deviceId, mode) {
       this.modeWrites.push({ deviceId, mode });
+      this.operations.push({ type: 'mode', deviceId, mode });
       return this.completeWrite();
     },
     async setScheduleEnabled(deviceId, scheduleEnabled) {
       this.scheduleWrites.push({ deviceId, scheduleEnabled });
+      this.operations.push({ type: 'schedule', deviceId, scheduleEnabled });
+      if (this.scheduleWriteFails) {
+        return false;
+      }
       return this.completeWrite();
     },
     async setTargetTemperature(deviceId, temperature) {
       this.targetTemperatureWrites.push({ deviceId, temperature });
+      this.operations.push({ type: 'targetTemperature', deviceId, temperature });
       return this.completeWrite();
     },
     async setThresholds(deviceId, heatSetpoint, coolSetpoint) {
       this.thresholdWrites.push({ deviceId, heatSetpoint, coolSetpoint });
+      this.operations.push({ type: 'thresholds', deviceId, heatSetpoint, coolSetpoint });
       return this.completeWrite();
     },
     completeWrite() {
