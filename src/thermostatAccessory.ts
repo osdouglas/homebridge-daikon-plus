@@ -59,7 +59,9 @@ export class DaikinThermostatAccessory {
       })
       .onSet(async value => {
         this.assertOnline();
-        await this.writeOrThrow(this.platform.client.setTargetTemperature(this.deviceId, Number(value)));
+        await this.writeManualThermostatUpdate(() =>
+          this.platform.client.setTargetTemperature(this.deviceId, Number(value)),
+        );
       });
 
     this.service
@@ -73,7 +75,9 @@ export class DaikinThermostatAccessory {
       })
       .onSet(async value => {
         this.assertOnline();
-        await this.writeOrThrow(this.platform.client.setThresholds(this.deviceId, Number(value), undefined));
+        await this.writeManualThermostatUpdate(() =>
+          this.platform.client.setThresholds(this.deviceId, Number(value), undefined),
+        );
       });
 
     this.service
@@ -87,7 +91,9 @@ export class DaikinThermostatAccessory {
       })
       .onSet(async value => {
         this.assertOnline();
-        await this.writeOrThrow(this.platform.client.setThresholds(this.deviceId, undefined, Number(value)));
+        await this.writeManualThermostatUpdate(() =>
+          this.platform.client.setThresholds(this.deviceId, undefined, Number(value)),
+        );
       });
 
     this.service.getCharacteristic(platform.Characteristic.CurrentRelativeHumidity).onGet(() => {
@@ -169,6 +175,22 @@ export class DaikinThermostatAccessory {
     }
   }
 
+  private async writeManualThermostatUpdate(write: () => Promise<boolean>): Promise<void> {
+    await this.disableScheduleForManualWrite();
+    await this.writeOrThrow(write());
+  }
+
+  private async disableScheduleForManualWrite(): Promise<void> {
+    if (!this.scheduleService) {
+      return;
+    }
+
+    const didWrite = await this.platform.client.setScheduleEnabled(this.deviceId, false);
+    if (!didWrite) {
+      throw HAPStatus.SERVICE_COMMUNICATION_FAILURE;
+    }
+  }
+
   private getCurrentHeatingCoolingState(): CharacteristicValue {
     switch (this.platform.client.getCurrentStatus(this.deviceId)) {
       case EquipmentStatus.COOLING:
@@ -215,7 +237,7 @@ export class DaikinThermostatAccessory {
         break;
     }
 
-    await this.writeOrThrow(this.platform.client.setMode(this.deviceId, mode));
+    await this.writeManualThermostatUpdate(() => this.platform.client.setMode(this.deviceId, mode));
   }
 
   private clamp(value: number, min: number, max: number): number {
